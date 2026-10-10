@@ -1,0 +1,44 @@
+{
+  "name": "Grow a Planet",
+  "servePort": 34876,
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+      "$path": "src/shared/ReplicatedStorage"
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "$ignoreUnknownInstances": true,
+      "FORGE": {
+        "$path": "src/shared/ServerScriptService/FORGE"
+      },
+      "VAULT": {
+        "$path": "src/shared/ServerScriptService/VAULT"
+      },
+      "Services": {
+        "$className": "Folder"
+      },
+      "Data": {
+        "$className": "Folder",
+        "Stores": {
+          "$className": "Folder"
+        }
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$ignoreUnknownInstances": true,
+        "Controllers": {
+          "$className": "Folder"
+        },
+        "FORGE": {
+          "$path": "src/shared/StarterPlayerScripts/FORGE"
+        }
+      }
+    }
+  }
+}
