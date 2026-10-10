@@ -1,6 +1,11 @@
 {
   "name": "Grow a Planet",
-  "servePort": 34876,
+  "servePort": 34878,
+  "servePlaceIds": [
+    102865473124541
+  ],
+  "placeId": 102865473124541,
+  "gameId": 10770120558,
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {

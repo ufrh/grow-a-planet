@@ -2,27 +2,38 @@
 
 A Roblox procedural microvoxel planet simulator by **Public Access**.
 
-## Tooling
+## One-place setup
 
-- **FORGE 4.4.1** — ported from `ufrh/Ruckus` (branch `combat-rewrite`), including server/client runtime, UI libraries, matchmaking engine, and optional developer tools.
-- **VAULT** — standalone server-side data framework, ported from the RUCKUS reference package.
-- **FORGE Studio** — source for the Studio UI designer plugin; build separately with `forge-studio.project.json`.
-- **Rojo** — `grow-a-planet.project.json` maps the project to one Roblox place.
+- Roblox place: **102865473124541**
+- Experience (universe): **10770120558**
+- GitHub branch: **main**
+- One Rojo project: grow-a-planet.project.json
+- Rojo port: **34878**, chosen to avoid the RUCKUS development ports
 
-> The standalone VAULT package and FORGE's integrated data engine are two alternative persistence APIs. Do **not** open a Player datastore through both at once. Grow a Planet will use the integrated FORGE data layer by default; the standalone VAULT module is provided for compatibility and standalone usage.
+No Central, Game Server, or testing place. Workspace and Lighting are deliberately unmapped, so the Studio scene (empty void and twinkling stars) is preserved.
 
-## Development
+## Windows development launchers
 
-1. Install Rojo (see `rokit.toml`).
-2. Open your new Grow a Planet place in Roblox Studio.
-3. From the repository root, run `rojo serve grow-a-planet.project.json` and connect the Rojo plugin.
-4. The project mounts `ReplicatedStorage.FORGE`, `ServerScriptService.FORGE`, `ServerScriptService.VAULT`, and FORGE's client boot script.
-5. No game-specific Player data schema is installed yet; add one under `src/game/ServerScriptService/Data/Stores/` once the game's data model is defined.
+1. Clone the repo and open the Grow a Planet place in Roblox Studio.
+2. Install Rojo if needed (rokit install, based on rokit.toml).
+3. Double-click **START_GROW_A_PLANET.bat**. It validates the project, fast-forwards the current Git branch when safe, starts a single Rojo server, and starts background Git sync.
+4. Connect the standard Rojo Studio integration to **http://localhost:34878**.
+5. Use **PUSH_GROW_A_PLANET.bat** to commit and push changes to the current branch.
+6. Use **STOP_GROW_A_PLANET.bat** to stop only this project's recorded Rojo and live-sync processes.
+
+Background Git sync only fast-forwards when the working tree is clean and there are no unpushed local commits. The launchers never reset or switch branches. Logs and process IDs live in ignored logs/.
+
+**Git push and Rojo sync do not publish the Roblox place.** Publish from Roblox Studio separately.
+
+The separate FORGE Studio designer plugin and its build project are removed. The normal Rojo Studio integration used for syncing files is external tooling and is still needed. The FORGE runtime UI API remains available.
+
+## Framework
+
+- FORGE 4.4.1: runtime, networking, UI runtime, and integrated data system, ported from ufrh/Ruckus.
+- Standalone VAULT: retained for compatibility, but not started by default.
+
+Do not bind the same player datastore with both APIs. Game-specific services, controllers and player data schemas are not installed yet. FORGE bootstraps still require a Roblox Studio smoke test.
 
 ## Prototype 0.1
 
-Planned: deterministic hollow microvoxel terrain, 0.25-stud voxel scale at 16-stud diameter, exposed-face chunk meshing, and a custom distance-based level-of-detail chooser. No traits, economy, or vegetation.
-
-## Scope of this port
-
-The runtime source is preserved from RUCKUS. Game-specific services, match systems, combat, RUCKUS profile schemas and existing gameplay are deliberately excluded. The server/client startup scripts have been adapted for this new project. Roblox Studio testing is still required before declaring the runtime validated.
+Planned: deterministic seeded 16-stud hollow planets with 0.25-stud voxel cells, exposed-face chunk meshing and distance-based fidelity. No traits, economy or vegetation yet.

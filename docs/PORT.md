@@ -1,40 +1,26 @@
-# FORGE and VAULT port
+# Grow a Planet — framework port
 
-Source: `ufrh/Ruckus` branch `combat-rewrite`, commit `fb87ae52561013554981a7190b69738348fb8b3f`.
+FORGE 4.4.1 came from ufrh/Ruckus (combat-rewrite); standalone VAULT came from the RUCKUS reference code.
 
-## Included
+Retained: shared FORGE API, runtime, networking, UI runtime, integrated data engine, standalone VAULT, server/client bootstraps. Standalone VAULT is optional: never open a player store with both persistence APIs.
 
-- `src/shared/ReplicatedStorage/FORGE/` — complete shared API, Kernel, UI, and Engine modules
-- `src/shared/ServerScriptService/FORGE/` — server implementation, integrated VAULT/Data, optional developer and matchmaking modules
-- `src/shared/StarterPlayerScripts/FORGE/` — client launcher and developer controller
-- `src/shared/ServerScriptService/VAULT/` — standalone VAULT package from the RUCKUS reference archive
-- `src/plugin/FORGEStudio/` — source of the FORGE Studio UI designer
-- `forge-studio.project.json` — separate Rojo project for building the Studio plugin
-- `grow-a-planet.project.json` — one-place project with a fresh, unused game service and profile structure
+Removed: the FORGE Studio designer plugin, its separate Rojo project, and plugin-only documentation. The FORGE runtime UI library is NOT the designer plugin and remains intact. RUCKUS gameplay, profile schema, and match-specific bootstraps were never imported.
 
-## Deliberately excluded
+## Development
 
-- RUCKUS-specific Services and gameplay modules
-- The RUCKUS datastore `RuckusPlayerData` and its profile schema
-- RUCKUS game-specific boots, cross-place configuration, references, and scripts
-- Automatic FORGE matchmaking/developer test harness startup
+One place: 102865473124541
+Experience/universe: 10770120558
+Rojo: grow-a-planet.project.json on localhost:34878
+Windows launchers: START_GROW_A_PLANET.bat, STOP_GROW_A_PLANET.bat, PUSH_GROW_A_PLANET.bat.
 
-## Important runtime and data notes
+Use START to start one Rojo server and background fast-forward Git sync, STOP to close only this project's recorded processes, and PUSH to commit/push the current branch. The scripts do not publish to Roblox. Workspace and Lighting are deliberately not Rojo-mapped so the Studio starfield is preserved.
 
-FORGE 4.4.1 includes an integrated VAULT-derived persistence engine under `ServerScriptService.FORGE.Engine.Data`. The standalone VAULT module lives alongside it at `ServerScriptService.VAULT` for compatibility, but is *not* automatically started. Do not bind the same player profile store in both.
+## Verification
 
-No player schema is installed yet. Before storing data, define a new Grow a Planet schema using a unique datastore name (e.g. `GrowAPlanetPlayerData`), then add the gameplay Services that use it.
+- Connect Rojo from Studio and verify FORGE and VAULT are mounted.
+- Check both FORGE bootstraps run without warnings.
+- Check the Studio starfield remains unchanged.
+- Confirm Rojo and live Git sync stop cleanly.
+- Define Grow a Planet-specific player data schemas before using persistence.
 
-Service and Controller folders start empty, by design; the Rojo project creates them as Folder instances. When implementation begins, map the game-specific source folders into these two roots.
-
-The FORGE Studio plugin includes the RUCKUS style preset from its source repository. It is a plugin preset, **not** RUCKUS runtime gameplay, and can be replaced when Grow a Planet's visual direction is finalized.
-
-## Testing checklist
-
-1. Rojo serves `grow-a-planet.project.json` and connects to the new Studio place.
-2. Studio hierarchy contains `ReplicatedStorage.FORGE`, `ServerScriptService.FORGE` and `ServerScriptService.VAULT`.
-3. Server/client FORGE bootstrap starts without warnings or infinite yields.
-4. Studio plugin builds via `rojo build forge-studio.project.json --output FORGEStudio.rbxmx`.
-5. Confirm persistence only after the game-specific data schema is defined and the published place has the required datastore access.
-
-Code was imported and mapped but has **not** been executed in Roblox Studio in this environment.
+The port has not been runtime-tested in Roblox Studio.
