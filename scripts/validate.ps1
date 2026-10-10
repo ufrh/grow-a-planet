@@ -11,9 +11,18 @@ foreach ($FilePath in @(
     'src/shared/ReplicatedStorage/FORGE/init.lua',
     'src/shared/ServerScriptService/FORGE/Launch/Bootstrap.server.lua',
     'src/shared/ServerScriptService/VAULT/init.lua',
-    'src/shared/StarterPlayerScripts/FORGE/Launch/Bootstrap.client.lua'
+    'src/shared/StarterPlayerScripts/FORGE/Launch/Bootstrap.client.lua',
+    'src/shared/ReplicatedStorage/GrowAPlanet/Generation/Config.lua',
+    'src/shared/ReplicatedStorage/GrowAPlanet/Generation/VoxelField.lua',
+    'src/shared/ReplicatedStorage/GrowAPlanet/Generation/GreedyMesher.lua',
+    'src/shared/ReplicatedStorage/GrowAPlanet/Generation/Renderer.lua',
+    'src/shared/ReplicatedStorage/GrowAPlanet/Generation/SelfTest.lua',
+    'src/game/ServerScriptService/PlanetBootstrap.server.lua',
+    'src/game/StarterPlayerScripts/PlanetPrototype.client.lua'
 )) {
     if (-not (Test-Path -LiteralPath (Join-Path $Root $FilePath))) { throw "Missing FORGE/VAULT file: $FilePath" }
 }
 if (Test-Path -LiteralPath (Join-Path $Root 'src/plugin')) { throw 'Legacy Studio designer plugin is still present.' }
-Write-Host '[Grow a Planet] Single-place configuration valid.' -ForegroundColor Green
+if ($Project.tree.ServerScriptService.PlanetBootstrap.'$path' -ne 'src/game/ServerScriptService/PlanetBootstrap.server.lua') { throw 'PlanetBootstrap not mapped.' }
+if ($Project.tree.StarterPlayer.StarterPlayerScripts.PlanetPrototype.'$path' -ne 'src/game/StarterPlayerScripts/PlanetPrototype.client.lua') { throw 'PlanetPrototype not mapped.' }
+Write-Host '[Grow a Planet] Single-place generation prototype configuration valid.' -ForegroundColor Green

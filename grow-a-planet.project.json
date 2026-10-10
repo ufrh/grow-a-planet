@@ -30,6 +30,9 @@
         "Stores": {
           "$className": "Folder"
         }
+      },
+      "PlanetBootstrap": {
+        "$path": "src/game/ServerScriptService/PlanetBootstrap.server.lua"
       }
     },
     "StarterPlayer": {
@@ -42,6 +45,9 @@
         },
         "FORGE": {
           "$path": "src/shared/StarterPlayerScripts/FORGE"
+        },
+        "PlanetPrototype": {
+          "$path": "src/game/StarterPlayerScripts/PlanetPrototype.client.lua"
         }
       }
     }

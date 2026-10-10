@@ -36,4 +36,10 @@ Do not bind the same player datastore with both APIs. Game-specific services, co
 
 ## Prototype 0.1
 
-Planned: deterministic seeded 16-stud hollow planets with 0.25-stud voxel cells, exposed-face chunk meshing and distance-based fidelity. No traits, economy or vegetation yet.
+**Implemented:** one deterministic seed-based 16-stud procedural planet, with 0.25-stud high-resolution cells (64 across), surface-only greedy-meshed exposed quads, chunked EditableMesh rendering, and custom distance-driven 0.25 / 0.5 / 1-stud LOD. A lower-resolution Parts fallback activates if Mesh & Image APIs are unavailable.
+
+A scriptable orbit camera and minimal F3 debugging overlay ship with it. An automatic Studio geometry self-test checks outward face winding and chunk seams. Gameplay data, traits, economy, vegetation, and persistence remain intentionally out of scope.
+
+**Start:** run START_GROW_A_PLANET.bat, connect Rojo, press Play. The starfield stays in Lighting/Workspace and default character spawning is disabled. Use mouse drag or touch drag to orbit and scroll/pinch to zoom. Press R to reroll the seed, 1/2/3 to force LOD, 0 for automatic LOD, and F3 for stats.
+
+See [the generation notes](docs/PLANET_GENERATION.md) for architecture, API eligibility, limitations and smoke-test steps.

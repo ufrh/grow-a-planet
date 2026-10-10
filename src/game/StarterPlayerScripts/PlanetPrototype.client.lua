@@ -1,0 +1,346 @@
+--!strict
+-- Grow a Planet 0.1: purely client-side, deterministic visual planet.
+-- No default Roblox character, no gameplay UI, no persistence.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local Player = Players.LocalPlayer
+local Generation = ReplicatedStorage:WaitForChild("GrowAPlanet"):WaitForChild("Generation")
+local Config = require(Generation:WaitForChild("Config"))
+local Field = require(Generation:WaitForChild("VoxelField"))
+local Mesher = require(Generation:WaitForChild("GreedyMesher"))
+local Renderer = require(Generation:WaitForChild("Renderer"))
+
+if RunService:IsStudio() then
+    local ok, err = pcall(function()
+        require(Generation:WaitForChild("SelfTest")).run()
+    end)
+    if not ok then warn("[Grow a Planet] Geometry self-test failed: " .. tostring(err)) end
+end
+
+while not Workspace.CurrentCamera do task.wait() end
+local camera = Workspace.CurrentCamera
+camera.CameraType = Enum.CameraType.Scriptable
+camera.FieldOfView = Config.Camera.FieldOfView
+
+local planetFolder = Instance.new("Folder")
+planetFolder.Name = "GeneratedPlanets"
+planetFolder.Parent = Workspace
+
+-- The overlay is intentionally hidden until F3; the default scene is only stars + planet.
+local gui = Instance.new("ScreenGui")
+gui.Name = "PlanetDebug"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 100
+gui.Parent = Player:WaitForChild("PlayerGui")
+
+local panel = Instance.new("TextLabel")
+panel.Name = "Stats"
+panel.Size = UDim2.fromOffset(330, 184)
+panel.Position = UDim2.fromOffset(16, 16)
+panel.BackgroundColor3 = Color3.fromRGB(15, 18, 29)
+panel.BackgroundTransparency = 0.2
+panel.BorderSizePixel = 0
+panel.TextColor3 = Color3.fromRGB(237, 231, 221)
+panel.Font = Enum.Font.Code
+panel.TextSize = 14
+panel.TextXAlignment = Enum.TextXAlignment.Left
+panel.TextYAlignment = Enum.TextYAlignment.Top
+panel.TextWrapped = false
+panel.Visible = false
+panel.Text = "Planet generator starting..."
+panel.Parent = gui
+
+local inset = Instance.new("UIPadding")
+inset.PaddingLeft = UDim.new(0, 12)
+inset.PaddingTop = UDim.new(0, 10)
+inset.Parent = panel
+
+local yaw = math.rad(-30)
+local pitch = math.rad(16)
+local distance = Config.Camera.InitialDistance
+local mouseDragging = false
+local activeTouch: InputObject? = nil
+local previousPinchScale: number? = nil
+local mode = if Renderer.meshSupported() then "mesh" else "parts"
+local forcedTier: number? = nil
+local desiredTier: number? = nil
+local desiredSeed = Config.Seed
+local buildTicket = 0
+local workerRunning = false
+local active: any = nil
+local status = "Initializing"
+
+if mode == "parts" then
+    warn("[Grow a Planet] EditableMesh APIs unavailable. Using coarse exposed-face Parts fallback. Enable Mesh & Image APIs for full microvoxels.")
+end
+
+local function dispose(result)
+    if not result then return end
+    result.folder:Destroy()
+    for _, editable in ipairs(result.editables) do
+        editable:Destroy()
+    end
+end
+
+local function buildPlanet(tier, seed, ticket)
+    local staging = Instance.new("Folder")
+    staging.Name = string.format("Seed_%d_LOD_%d", seed, tier)
+    local editables = {}
+    local quads = 0
+    local chunks = 0
+    local startedAt = os.clock()
+    local currentMode = mode
+    local sampleCount = 0
+
+    local function checkCancelled()
+        if buildTicket ~= ticket then error("GENERATION_CANCELLED", 0) end
+    end
+
+    local ok, failure = xpcall(function()
+        local voxelSize = Config.VoxelSizes[tier]
+        local field = Field.new(seed, voxelSize, function() return buildTicket ~= ticket end)
+        checkCancelled()
+        sampleCount = field.Samples
+
+        Mesher.forEachChunk(field, function(faces, chunk)
+            checkCancelled()
+            local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
+            if currentMode == "mesh" then
+                local editable = Renderer.addMeshChunk(faces, name, staging, Config.Center)
+                table.insert(editables, editable)
+            else
+                -- Budget checked across the ENTIRE planet, not per chunk.
+                Renderer.addPartsChunk(faces, name, staging, Config.Center, quads)
+            end
+            quads += #faces
+            chunks += 1
+            if chunks % 2 == 0 then task.wait() end
+        end)
+        checkCancelled()
+        if chunks == 0 then error("Planet generated zero surface chunks.") end
+    end, debug.traceback)
+
+    if not ok then
+        staging:Destroy()
+        for _, editable in ipairs(editables) do editable:Destroy() end
+        error(failure, 0)
+    end
+    return {
+        folder = staging,
+        editables = editables,
+        quads = quads,
+        chunks = chunks,
+        samples = sampleCount,
+        seconds = os.clock() - startedAt,
+        tier = tier,
+        seed = seed,
+        mode = currentMode,
+    }
+end
+
+local function launchWorker()
+    if workerRunning then return end
+    workerRunning = true
+    task.spawn(function()
+        while desiredTier do
+            local ticket = buildTicket
+            local tier = desiredTier
+            local seed = desiredSeed
+            status = string.format("Generating LOD %d...", tier)
+            local ok, result = pcall(buildPlanet, tier, seed, ticket)
+
+            if ok then
+                if ticket == buildTicket then
+                    result.folder.Parent = planetFolder
+                    local old = active
+                    active = result
+                    dispose(old)
+                    status = string.format("Ready (%.2fs)", result.seconds)
+                    print(string.format(
+                        "[Grow a Planet] Seed %d | %.2f-stud cells | %d voxel samples | %d quads | %d chunks | %s | %.2fs",
+                        seed, Config.VoxelSizes[tier], result.samples, result.quads, result.chunks, mode, result.seconds
+                    ))
+                else
+                    dispose(result)
+                end
+            elseif ticket == buildTicket then
+                local errorMessage = tostring(result)
+                if mode == "mesh" then
+                    -- A mesh may be creatable but fail when converted to a MeshPart
+                    -- due to API entitlement or a device memory budget.
+                    warn("[Grow a Planet] Mesh rendering failed; switching to safe Parts fallback: " .. errorMessage)
+                    mode = "parts"
+                    desiredTier = Config.FallbackLOD
+                    buildTicket += 1
+                elseif not string.find(errorMessage, "GENERATION_CANCELLED", 1, true) then
+                    warn("[Grow a Planet] Generation failed: " .. errorMessage)
+                    status = "Generation failed (see Output)"
+                    desiredTier = nil
+                end
+            end
+
+            if ticket == buildTicket then break end
+        end
+        workerRunning = false
+    end)
+end
+
+local function requestGeneration(tier, seed)
+    local safeTier = if mode == "parts" then Config.FallbackLOD else tier
+    if desiredTier == safeTier and desiredSeed == seed then return end
+    desiredTier = safeTier
+    desiredSeed = seed
+    buildTicket += 1
+    launchWorker()
+end
+
+local function distanceTier()
+    if forcedTier then return forcedTier end
+    -- Hysteresis prevents rebuilding repeatedly when hovering around a boundary.
+    local reference = if active then active.tier else nil
+    local hysteresis = Config.LODHysteresis
+    if reference == 1 then
+        return if distance > Config.NearDistance + hysteresis then 2 else 1
+    elseif reference == 2 then
+        if distance < Config.NearDistance - hysteresis then return 1 end
+        if distance > Config.FarDistance + hysteresis then return 3 end
+        return 2
+    elseif reference == 3 then
+        return if distance < Config.FarDistance - hysteresis
+            then (if distance < Config.NearDistance then 1 else 2)
+            else 3
+    end
+    if distance < Config.NearDistance then return 1 end
+    if distance < Config.FarDistance then return 2 end
+    return 3
+end
+
+-- Show a cheap preview while the first high-res surface is being generated.
+requestGeneration(3, Config.Seed)
+
+local dragging = false
+local function orbit(dx, dy)
+    yaw -= dx * Config.Camera.OrbitSpeed
+    pitch = math.clamp(pitch - dy * Config.Camera.OrbitSpeed, math.rad(-82), math.rad(82))
+end
+
+local function zoom(amount)
+    distance = math.clamp(distance + amount, Config.Camera.MinDistance, Config.Camera.MaxDistance)
+end
+
+UserInputService.InputBegan:Connect(function(input, handled)
+    if handled then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
+        mouseDragging = true
+        dragging = true
+    elseif input.UserInputType == Enum.UserInputType.Touch and not activeTouch then
+        activeTouch = input
+        dragging = true
+    elseif input.UserInputType == Enum.UserInputType.Keyboard then
+        if input.KeyCode == Enum.KeyCode.F3 then
+            panel.Visible = not panel.Visible
+        elseif input.KeyCode == Enum.KeyCode.R then
+            local newSeed = Random.new():NextInteger(1, 2000000000)
+            requestGeneration(distanceTier(), newSeed)
+        elseif input.KeyCode == Enum.KeyCode.One then
+            forcedTier = 1
+            requestGeneration(1, desiredSeed)
+        elseif input.KeyCode == Enum.KeyCode.Two then
+            forcedTier = 2
+            requestGeneration(2, desiredSeed)
+        elseif input.KeyCode == Enum.KeyCode.Three then
+            forcedTier = 3
+            requestGeneration(3, desiredSeed)
+        elseif input.KeyCode == Enum.KeyCode.Zero then
+            forcedTier = nil
+            requestGeneration(distanceTier(), desiredSeed)
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
+        mouseDragging = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+            or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+        dragging = mouseDragging or activeTouch ~= nil
+    elseif input == activeTouch then
+        activeTouch = nil
+        dragging = mouseDragging
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input, handled)
+    if handled then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement and mouseDragging then
+        orbit(input.Delta.X, input.Delta.Y)
+    elseif input.UserInputType == Enum.UserInputType.MouseWheel then
+        zoom(-input.Position.Z * 2.8)
+    elseif input == activeTouch then
+        orbit(input.Delta.X, input.Delta.Y)
+    end
+end)
+
+UserInputService.TouchPinch:Connect(function(_, scale, _, state, handled)
+    if handled then return end
+    if state == Enum.UserInputState.Begin then
+        previousPinchScale = scale
+    elseif state == Enum.UserInputState.Change and previousPinchScale and scale > 0 then
+        zoom(distance * (previousPinchScale / scale - 1))
+        previousPinchScale = scale
+    else
+        previousPinchScale = nil
+    end
+end)
+
+local lodTimer = 0
+local debugTimer = 0
+local previewPending = true
+RunService:BindToRenderStep("GrowAPlanetOrbitCamera", Enum.RenderPriority.Camera.Value + 1, function(dt)
+    if not dragging then yaw += Config.Camera.AutoRotationSpeed * dt end
+    local cp = math.cos(pitch)
+    local position = Config.Center + Vector3.new(
+        math.sin(yaw) * cp * distance,
+        math.sin(pitch) * distance,
+        math.cos(yaw) * cp * distance
+    )
+    camera = Workspace.CurrentCamera or camera
+    camera.CameraType = Enum.CameraType.Scriptable
+    camera.FieldOfView = Config.Camera.FieldOfView
+    camera.CFrame = CFrame.lookAt(position, Config.Center)
+    camera.Focus = CFrame.new(Config.Center)
+
+    lodTimer += dt
+    if lodTimer >= 0.4 then
+        lodTimer = 0
+        if active then
+            if previewPending then
+                previewPending = false
+                requestGeneration(distanceTier(), desiredSeed)
+            else
+                requestGeneration(distanceTier(), desiredSeed)
+            end
+        end
+    end
+
+    debugTimer += dt
+    if panel.Visible and debugTimer >= 0.35 then
+        debugTimer = 0
+        local current = active
+        panel.Text = string.format(
+            "GROW A PLANET — PROTOTYPE 0.1\nSeed: %d\nLOD: %s  Cell: %s studs\nRenderer: %s\nChunks: %d   Quads: %d\nCamera distance: %.1f\nStatus: %s\n\nDrag: orbit   Scroll/pinch: zoom\nR: new seed   1/2/3: LOD   0: auto",
+            desiredSeed,
+            current and tostring(current.tier) or "-",
+            current and tostring(Config.VoxelSizes[current.tier]) or "-",
+            mode,
+            current and current.chunks or 0,
+            current and current.quads or 0,
+            distance,
+            status
+        )
+    end
+end)
