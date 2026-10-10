@@ -48,3 +48,7 @@ This is a visual proof of concept. There is no growth simulation, ecology, multi
 7. Runtime EditableMesh depends on experience/account Mesh & Image API entitlement. Parts fallback is safety-capped and can show a coarser resolution.
 
 Workspace and Lighting are intentionally unmapped, preserving the existing starfield. This repository update cannot be considered visually verified until run in Studio.
+
+## Actual tree resolution (fidelity correction)
+
+The tree ratio is guaranteed relative to the rendered planet tier, not just in Config.lua. A previous fallback could silently retry a tree alone at a lower LOD after exceeding 2,200 Parts; the old F3 readout displayed the desired ratio even when this happened. The per-tree budget is now 10,000 merged solid cuboid Parts. If that is exceeded, the whole planet and its trees move to the next coarser LOD *together*. No successful tree silently uses the wrong voxel width. The F3 overlay and Output log report the **actual** successfully generated tree width and measured ratio, or `none` if a tree fails entirely. Rendering still requires a real Studio smoke test.

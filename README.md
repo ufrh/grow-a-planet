@@ -45,3 +45,5 @@ Do not bind the same player datastore with both APIs. Game-specific services, co
 No full vegetation gameplay, ecology, player characters, or persistence yet. This is a visual proof-of-concept. The built-in orbital camera and F3 stats continue to work; press R to reroll the seed, 1/2/3 to test LOD, and 0 for automatic detail.
 
 See the generation technical notes in docs/PLANET_GENERATION.md. Studio rendering and device performance require a live test.
+
+Tree fidelity note: test trees must render at exactly twice the voxel resolution of the *displayed* planet. Previous versions could silently drop individual trees to a coarser tier when their 2,200-Part budget was hit, and F3 misleadingly showed the requested cell size. This is corrected: the per-tree Parts budget is 10,000; if it is still exceeded, the whole planet/tree pair changes LOD together to keep the ratio. F3 now reports the actual generated tree voxel size and ratio.

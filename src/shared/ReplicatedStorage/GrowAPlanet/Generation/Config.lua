@@ -52,7 +52,9 @@ return {
         Count = 4,
         VoxelRatio = 0.5,
         GridCells = {80, 40, 20},
-        MaxPartsPerTree = 2200,
+        -- Expanded headroom for *true* 2x-res vegetation before requiring
+        -- a synchronized overall planet/tree LOD fallback.
+        MaxPartsPerTree = 10000,
         -- 2.8125 studs of world-aligned local bounds at every tree LOD.
         Colors = {
             Color3.fromRGB(107, 76, 51),  -- wood

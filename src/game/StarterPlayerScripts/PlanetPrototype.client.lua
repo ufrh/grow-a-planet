@@ -42,7 +42,7 @@ gui.Parent = Player:WaitForChild("PlayerGui")
 
 local panel = Instance.new("TextLabel")
 panel.Name = "Stats"
-panel.Size = UDim2.fromOffset(375, 246)
+panel.Size = UDim2.fromOffset(385, 275)
 panel.Position = UDim2.fromOffset(16, 16)
 panel.BackgroundColor3 = Color3.fromRGB(15, 18, 29)
 panel.BackgroundTransparency = 0.2
@@ -100,6 +100,8 @@ local function buildPlanet(tier, seed, ticket)
     local cuboids = 0
     local treeCount = 0
     local treeVoxelCount = 0
+    local actualTreeCellSize: number? = nil
+    local detailRatio: number? = nil
     local startedAt = os.clock()
     local currentMode = mode
     local sampleCount = 0
@@ -156,74 +158,82 @@ local function buildPlanet(tier, seed, ticket)
 
             for index = 1, Config.TestTrees.Count do
                 checkCancelled()
-                local treeTier = tier
-                local displayed = false
-                while not displayed and treeTier <= #Config.VoxelSizes do
-                    local treeFolder = Instance.new("Folder")
-                    treeFolder.Name = "Tree_" .. index .. "_LOD_" .. treeTier
-                    treeFolder.Parent = treeRoot
-                    local previousEditables = #editables
-                    local okTree, errorTree = pcall(function()
-                        local field = TreeGenerator.make(seed, treeTier, index,
-                            function() return buildTicket ~= ticket end)
-                        checkCancelled()
-                        assert(field.WoodCount > 0 and field.LeafCount > 0,
-                            "Test tree has no wood or foliage")
+                -- A displayed tree MUST use half-size voxels relative to
+                -- the displayed planet. Never silently change only the tree LOD.
+                local treeFolder = Instance.new("Folder")
+                treeFolder.Name = "Tree_" .. index .. "_LOD_" .. tier
+                treeFolder.Parent = treeRoot
+                local previousEditables = #editables
 
-                        local treeChunks = 0
-                        if currentMode == "mesh" then
-                            Mesher.forEachChunk(field, function(faces, chunk)
-                                checkCancelled()
-                                local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
-                                local editable = Renderer.addMeshChunk(faces, name,
-                                    treeFolder, field.Center, Config.TestTrees.Colors)
-                                table.insert(editables, editable)
-                                treeChunks += 1
-                                if treeChunks % 2 == 0 then task.wait() end
-                            end)
-                        else
-                            field:prepareSurface(function() return buildTicket ~= ticket end)
+                local okTree, errorTree = pcall(function()
+                    local treeField = TreeGenerator.make(seed, tier, index,
+                        function() return buildTicket ~= ticket end)
+                    checkCancelled()
+
+                    local ratio = Config.VoxelSizes[tier] / treeField.VoxelSize
+                    assert(math.abs(ratio - 2) < 0.00001,
+                        "A rendered tree must be exactly 2x finer than its planet")
+                    assert(treeField.WoodCount > 0 and treeField.LeafCount > 0,
+                        "Test tree has no wood or foliage")
+
+                    local treeChunks = 0
+                    if currentMode == "mesh" then
+                        Mesher.forEachChunk(treeField, function(faces, chunk)
                             checkCancelled()
-                            local pending = {}
-                            CuboidMesher.forEachChunk(field, function(boxes, chunk)
-                                table.insert(pending, {boxes = boxes, chunk = chunk})
-                            end, function() return buildTicket ~= ticket end,
-                                Config.TestTrees.MaxPartsPerTree)
-
-                            for _, record in ipairs(pending) do
-                                checkCancelled()
-                                local chunk = record.chunk
-                                local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
-                                Renderer.addCubesChunk(record.boxes, name, treeFolder,
-                                    field.Center, Config.TestTrees.Colors)
-                                treeChunks += 1
-                            end
-                        end
-                        checkCancelled()
-                        assert(treeChunks > 0, "Tree renderer produced no visible chunks")
-                        treeCount += 1
-                        treeVoxelCount += field.WoodCount + field.LeafCount
-                    end)
-
-                    if okTree then
-                        displayed = true
+                            local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
+                            local editable = Renderer.addMeshChunk(faces, name,
+                                treeFolder, treeField.Center, Config.TestTrees.Colors)
+                            table.insert(editables, editable)
+                            treeChunks += 1
+                            if treeChunks % 2 == 0 then task.wait() end
+                        end)
                     else
-                        treeFolder:Destroy()
-                        for i = #editables, previousEditables + 1, -1 do
-                            editables[i]:Destroy()
-                            table.remove(editables, i)
-                        end
-                        if buildTicket ~= ticket then error("GENERATION_CANCELLED", 0) end
-                        if currentMode == "parts" and treeTier < #Config.VoxelSizes then
-                            treeTier += 1
-                        else
-                            warn(string.format(
-                                "[Grow a Planet] Test tree %d could not render at LOD %d: %s",
-                                index, treeTier, tostring(errorTree)
-                            ))
-                            break
+                        treeField:prepareSurface(function() return buildTicket ~= ticket end)
+                        checkCancelled()
+                        local pending = {}
+                        CuboidMesher.forEachChunk(treeField, function(boxes, chunk)
+                            table.insert(pending, {boxes = boxes, chunk = chunk})
+                        end, function() return buildTicket ~= ticket end,
+                            Config.TestTrees.MaxPartsPerTree)
+
+                        for _, record in ipairs(pending) do
+                            checkCancelled()
+                            local chunk = record.chunk
+                            local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
+                            Renderer.addCubesChunk(record.boxes, name, treeFolder,
+                                treeField.Center, Config.TestTrees.Colors)
+                            treeChunks += 1
                         end
                     end
+                    checkCancelled()
+                    assert(treeChunks > 0, "Tree renderer produced no visible chunks")
+                    treeCount += 1
+                    treeVoxelCount += treeField.WoodCount + treeField.LeafCount
+                    actualTreeCellSize = treeField.VoxelSize
+                    detailRatio = ratio
+                end)
+
+                if not okTree then
+                    treeFolder:Destroy()
+                    for i = #editables, previousEditables + 1, -1 do
+                        editables[i]:Destroy()
+                        table.remove(editables, i)
+                    end
+                    if buildTicket ~= ticket then error("GENERATION_CANCELLED", 0) end
+
+                    -- If budget is exceeded at a high tier, downshift planet
+                    -- and trees together, maintaining their 2x relationship.
+                    -- Unlike before, an individual tree never silently loses
+                    -- half of its voxel resolution.
+                    if currentMode == "parts"
+                        and string.find(tostring(errorTree), "FALLBACK_PART_BUDGET", 1, true)
+                        and tier < #Config.VoxelSizes then
+                        error("TREE_DETAIL_BUDGET", 0)
+                    end
+                    warn(string.format(
+                        "[Grow a Planet] Tree %d failed at LOD %d (requested 2x): %s",
+                        index, tier, tostring(errorTree)
+                    ))
                 end
             end
         end
@@ -244,6 +254,8 @@ local function buildPlanet(tier, seed, ticket)
         cuboids = cuboids,
         treeCount = treeCount,
         treeVoxelCount = treeVoxelCount,
+        actualTreeCellSize = actualTreeCellSize,
+        detailRatio = detailRatio,
         chunks = chunks,
         samples = sampleCount,
         seconds = os.clock() - startedAt,
@@ -272,9 +284,10 @@ local function launchWorker()
                     dispose(old)
                     status = string.format("Ready (%.2fs)", result.seconds)
                     print(string.format(
-                        "[Grow a Planet] Seed %d | %.5f-stud planet cells | %d logical grid cells | %d faces | %d surface cubes | %d cuboids | %d chunks | %d trees | %s | %.2fs",
-                        seed, Config.VoxelSizes[tier], result.samples, result.quads,
-                        result.surfaceCubes, result.cuboids, result.chunks, result.treeCount,
+                        "[Grow a Planet] Seed %d | planet cell %.5f | trees %d/%d | REAL tree cell %s | ratio %s | mode %s | %.2fs",
+                        seed, Config.VoxelSizes[tier], result.treeCount, Config.TestTrees.Count,
+                        result.actualTreeCellSize and string.format("%.5f", result.actualTreeCellSize) or "none",
+                        result.detailRatio and string.format("%.1fx", result.detailRatio) or "none",
                         result.mode, result.seconds
                     ))
                 else
@@ -290,12 +303,18 @@ local function launchWorker()
                     desiredTier = math.max(tier, fallbackFloor)
                     buildTicket += 1
                 elseif mode == "parts"
-                    and string.find(errorMessage, "FALLBACK_PART_BUDGET", 1, true)
-                    and tier < #Config.VoxelSizes then
+                    and tier < #Config.VoxelSizes
+                    and (string.find(errorMessage, "FALLBACK_PART_BUDGET", 1, true)
+                        or string.find(errorMessage, "TREE_DETAIL_BUDGET", 1, true)) then
+                    -- Rebuild both planet and trees one tier lower, rather
+                    -- than reducing only the tree's real voxel resolution.
                     fallbackFloor = math.max(fallbackFloor, tier + 1)
                     desiredTier = fallbackFloor
                     buildTicket += 1
-                    warn(string.format("[Grow a Planet] Too many solid cuboids for LOD %d; trying LOD %d.", tier, fallbackFloor))
+                    warn(string.format(
+                        "[Grow a Planet] Detail budget exceeded at LOD %d; changing the entire planet and its 2x-resolution trees to LOD %d.",
+                        tier, fallbackFloor
+                    ))
                 elseif not string.find(errorMessage, "GENERATION_CANCELLED", 1, true) then
                     warn("[Grow a Planet] Generation failed: " .. errorMessage)
                     status = "Generation failed (see Output)"
@@ -451,7 +470,7 @@ RunService:BindToRenderStep("GrowAPlanetOrbitCamera", Enum.RenderPriority.Camera
         debugTimer = 0
         local current = active
         panel.Text = string.format(
-            "GROW A PLANET — PROTOTYPE 0.5\nSeed: %d\nLOD: %s  Cell: %s studs\nRenderer: %s\nChunks: %d  Faces: %d\nSurface cubes: %d  Boxes: %d\nTrees: %d  Tree voxels: %d\nTree cell: %.5f studs\nRadius: %.2f—%.2f\nCamera distance: %.1f\nStatus: %s\n\nDrag: orbit  Scroll/pinch: zoom\nR: new seed  1/2/3: LOD  0: auto",
+            "GROW A PLANET — PROTOTYPE 0.5\nSeed: %d\nLOD: %s  Cell: %s studs\nRenderer: %s\nChunks: %d  Faces: %d\nSurface cubes: %d  Boxes: %d\nTrees: %d/%d  Tree voxels: %d\nACTUAL tree cell: %s studs\nActual tree detail: %s\nRadius: %.2f—%.2f\nCamera distance: %.1f\nStatus: %s\n\nDrag: orbit  Scroll/pinch: zoom\nR: new seed  1/2/3: LOD  0: auto",
             desiredSeed,
             current and tostring(current.tier) or "-",
             current and tostring(Config.VoxelSizes[current.tier]) or "-",
@@ -461,8 +480,10 @@ RunService:BindToRenderStep("GrowAPlanetOrbitCamera", Enum.RenderPriority.Camera
             current and current.surfaceCubes or 0,
             current and current.cuboids or 0,
             current and current.treeCount or 0,
+            Config.TestTrees.Count,
             current and current.treeVoxelCount or 0,
-            current and Config.VoxelSizes[current.tier] * Config.TestTrees.VoxelRatio or 0,
+            current and current.actualTreeCellSize and string.format("%.5f", current.actualTreeCellSize) or "none",
+            current and current.detailRatio and string.format("%.1fx finer", current.detailRatio) or "none",
             Config.MinSurfaceRadius, Config.MaxSurfaceRadius,
             distance,
             status

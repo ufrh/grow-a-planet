@@ -60,6 +60,8 @@ function SelfTest.run()
     assert(#Config.CellCounts == #Config.VoxelSizes, "LOD counts and sizes mismatch")
     assert(Config.CellCounts[1] == 256, "Highest planet LOD must be 256^3")
     assert(Config.TestTrees.VoxelRatio == 0.5, "Trees must use half-width planet voxels")
+    assert(Config.TestTrees.MaxPartsPerTree >= 10000,
+        "Tree fallback budget must not silently lower tree fidelity")
     for tier, count in ipairs(Config.CellCounts) do
         assert(math.abs(count * Config.VoxelSizes[tier] - Config.SamplingDiameter) < 0.000001)
         assert(math.abs(Config.TestTrees.GridCells[tier] * Config.VoxelSizes[tier]
@@ -114,6 +116,8 @@ function SelfTest.run()
     local testTree = TreeGenerator.make(12345, 3, 1)
     assert(testTree.Count == Config.TestTrees.GridCells[3], "Tree LOD cell count mismatch")
     assert(testTree.VoxelSize == Config.VoxelSizes[3] * 0.5, "Trees must be twice as fine")
+    assert(math.abs(Config.VoxelSizes[3] / testTree.VoxelSize - 2) < 0.00001,
+        "Actual tree-to-planet voxel scale must equal 2x")
     assert(testTree.WoodCount > 0, "Test tree is missing a voxel trunk")
     assert(testTree.LeafCount > 0, "Test tree has no voxel canopy")
     assert(testTree.Up:Dot((testTree.Root - Config.Center).Unit) > 0.9999,
