@@ -1,0 +1,9 @@
+{
+    "name": "FORGE Studio",
+    "tree": {
+        "$className": "Model",
+        "FORGEStudio": {
+            "$path": "src/plugin/FORGEStudio"
+        }
+    }
+}
