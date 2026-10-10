@@ -12,6 +12,7 @@ local Generation = ReplicatedStorage:WaitForChild("GrowAPlanet"):WaitForChild("G
 local Config = require(Generation:WaitForChild("Config"))
 local Field = require(Generation:WaitForChild("VoxelField"))
 local Mesher = require(Generation:WaitForChild("GreedyMesher"))
+local CuboidMesher = require(Generation:WaitForChild("CuboidMesher"))
 local Renderer = require(Generation:WaitForChild("Renderer"))
 
 if RunService:IsStudio() then
@@ -40,7 +41,7 @@ gui.Parent = Player:WaitForChild("PlayerGui")
 
 local panel = Instance.new("TextLabel")
 panel.Name = "Stats"
-panel.Size = UDim2.fromOffset(330, 184)
+panel.Size = UDim2.fromOffset(355, 226)
 panel.Position = UDim2.fromOffset(16, 16)
 panel.BackgroundColor3 = Color3.fromRGB(15, 18, 29)
 panel.BackgroundTransparency = 0.2
@@ -67,6 +68,7 @@ local mouseDragging = false
 local activeTouch: InputObject? = nil
 local previousPinchScale: number? = nil
 local mode = if Renderer.meshSupported() then "mesh" else "parts"
+local fallbackFloor = 1
 local forcedTier: number? = nil
 local desiredTier: number? = nil
 local desiredSeed = Config.Seed
@@ -76,7 +78,7 @@ local active: any = nil
 local status = "Initializing"
 
 if mode == "parts" then
-    warn("[Grow a Planet] EditableMesh APIs unavailable. Using coarse exposed-face Parts fallback. Enable Mesh & Image APIs for full microvoxels.")
+    warn("[Grow a Planet] EditableMesh unavailable; rendering full solid cube Parts with automatic safety LOD.")
 end
 
 local function dispose(result)
@@ -93,6 +95,8 @@ local function buildPlanet(tier, seed, ticket)
     local editables = {}
     local quads = 0
     local chunks = 0
+    local surfaceCubes = 0
+    local cuboids = 0
     local startedAt = os.clock()
     local currentMode = mode
     local sampleCount = 0
@@ -107,20 +111,38 @@ local function buildPlanet(tier, seed, ticket)
         checkCancelled()
         sampleCount = field.Samples
 
-        Mesher.forEachChunk(field, function(faces, chunk)
-            checkCancelled()
-            local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
-            if currentMode == "mesh" then
+        if currentMode == "mesh" then
+            -- A solid voxel volume is represented as only its visible cube
+            -- faces; greedy triangles share exact grid corners.
+            Mesher.forEachChunk(field, function(faces, chunk)
+                checkCancelled()
+                local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
                 local editable = Renderer.addMeshChunk(faces, name, staging, Config.Center)
                 table.insert(editables, editable)
-            else
-                -- Budget checked across the ENTIRE planet, not per chunk.
-                Renderer.addPartsChunk(faces, name, staging, Config.Center, quads)
+                quads += #faces
+                chunks += 1
+                if chunks % 2 == 0 then task.wait() end
+            end)
+        else
+            -- The fallback builds ONLY real exposed solid voxel cubes.
+            -- Compute a full-planet cuboid count before instancing any Parts,
+            -- to avoid freezing the client with tens of thousands of objects.
+            field:prepareSurface(function() return buildTicket ~= ticket end)
+            checkCancelled()
+            surfaceCubes = field.SurfaceCubes
+            local pending = {}
+            cuboids = CuboidMesher.forEachChunk(field, function(boxes, chunk)
+                table.insert(pending, { boxes = boxes, chunk = chunk })
+            end, function() return buildTicket ~= ticket end)
+            checkCancelled()
+            for _, record in ipairs(pending) do
+                local chunk = record.chunk
+                local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
+                Renderer.addCubesChunk(record.boxes, name, staging, Config.Center)
+                chunks += 1
+                checkCancelled()
             end
-            quads += #faces
-            chunks += 1
-            if chunks % 2 == 0 then task.wait() end
-        end)
+        end
         checkCancelled()
         if chunks == 0 then error("Planet generated zero surface chunks.") end
     end, debug.traceback)
@@ -134,6 +156,8 @@ local function buildPlanet(tier, seed, ticket)
         folder = staging,
         editables = editables,
         quads = quads,
+        surfaceCubes = surfaceCubes,
+        cuboids = cuboids,
         chunks = chunks,
         samples = sampleCount,
         seconds = os.clock() - startedAt,
@@ -162,8 +186,9 @@ local function launchWorker()
                     dispose(old)
                     status = string.format("Ready (%.2fs)", result.seconds)
                     print(string.format(
-                        "[Grow a Planet] Seed %d | %.2f-stud cells | %d voxel samples | %d quads | %d chunks | %s | %.2fs",
-                        seed, Config.VoxelSizes[tier], result.samples, result.quads, result.chunks, mode, result.seconds
+                        "[Grow a Planet] Seed %d | %.4f-stud cells | %d samples | %d faces | %d surface cubes | %d cuboids | %d chunks | %s | %.2fs",
+                        seed, Config.VoxelSizes[tier], result.samples, result.quads,
+                        result.surfaceCubes, result.cuboids, result.chunks, result.mode, result.seconds
                     ))
                 else
                     dispose(result)
@@ -175,8 +200,15 @@ local function launchWorker()
                     -- due to API entitlement or a device memory budget.
                     warn("[Grow a Planet] Mesh rendering failed; switching to safe Parts fallback: " .. errorMessage)
                     mode = "parts"
-                    desiredTier = Config.FallbackLOD
+                    desiredTier = math.max(tier, fallbackFloor)
                     buildTicket += 1
+                elseif mode == "parts"
+                    and string.find(errorMessage, "FALLBACK_PART_BUDGET", 1, true)
+                    and tier < #Config.VoxelSizes then
+                    fallbackFloor = math.max(fallbackFloor, tier + 1)
+                    desiredTier = fallbackFloor
+                    buildTicket += 1
+                    warn(string.format("[Grow a Planet] Too many solid cuboids for LOD %d; trying LOD %d.", tier, fallbackFloor))
                 elseif not string.find(errorMessage, "GENERATION_CANCELLED", 1, true) then
                     warn("[Grow a Planet] Generation failed: " .. errorMessage)
                     status = "Generation failed (see Output)"
@@ -191,7 +223,7 @@ local function launchWorker()
 end
 
 local function requestGeneration(tier, seed)
-    local safeTier = if mode == "parts" then Config.FallbackLOD else tier
+    local safeTier = if mode == "parts" then math.max(tier, fallbackFloor) else tier
     if desiredTier == safeTier and desiredSeed == seed then return end
     desiredTier = safeTier
     desiredSeed = seed
@@ -332,13 +364,16 @@ RunService:BindToRenderStep("GrowAPlanetOrbitCamera", Enum.RenderPriority.Camera
         debugTimer = 0
         local current = active
         panel.Text = string.format(
-            "GROW A PLANET — PROTOTYPE 0.1\nSeed: %d\nLOD: %s  Cell: %s studs\nRenderer: %s\nChunks: %d   Quads: %d\nCamera distance: %.1f\nStatus: %s\n\nDrag: orbit   Scroll/pinch: zoom\nR: new seed   1/2/3: LOD   0: auto",
+            "GROW A PLANET — PROTOTYPE 0.2\nSeed: %d\nLOD: %s  Cell: %s studs\nRenderer: %s\nChunks: %d  Faces: %d\nSurface cubes: %d  Boxes: %d\nRadius: %.2f—%.2f\nCamera distance: %.1f\nStatus: %s\n\nDrag: orbit  Scroll/pinch: zoom\nR: new seed  1/2/3: LOD  0: auto",
             desiredSeed,
             current and tostring(current.tier) or "-",
             current and tostring(Config.VoxelSizes[current.tier]) or "-",
             mode,
             current and current.chunks or 0,
             current and current.quads or 0,
+            current and current.surfaceCubes or 0,
+            current and current.cuboids or 0,
+            Config.MinSurfaceRadius, Config.MaxSurfaceRadius,
             distance,
             status
         )

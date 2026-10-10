@@ -1,27 +1,46 @@
-# Grow a Planet — Procedural Generation Prototype 0.1
+# Grow a Planet — Procedural Generation Prototype 0.2
 
-## What it does
+## Goal and geological proportions
 
-Press Play in the existing space/starfield place and one 16-stud planet appears at the world origin. Default Roblox character spawning is disabled for this viewer prototype. Nothing is added to or removed from the authored Workspace or Lighting scene.
+Earth feels almost smooth at the size of a golf ball. We preserve a visually round planet first and exaggerate its surface relief only enough to register at voxel scale.
 
-- **Deterministic surface:** seed 4102026 by default. A three-frequency seeded 3D noise displacement perturbs a sphere radius of 8 studs.
-- **True cubic voxels:** 64 cells across at 0.25 studs, with alternate 32-across (0.5) and 16-across (1) resolution levels.
-- **Hollow visuals:** occupancy is a temporary 1-byte-per-cell sampling mask, not 262,144 Parts. Only faces adjacent to empty space become quads. No interior cube geometry.
-- **Greedy meshing:** neighboring coplanar faces with the same palette color merge into rectangles. Masks check across chunk edges to avoid internal seam faces.
-- **Chunking:** 16 cells on each axis per chunk, and one EditableMesh MeshPart per non-empty surface chunk. Flat normal and vertex color attributes preserve the blocky geological look.
-- **LOD:** client orbit-camera distance selects 0.25 studs nearby, 0.5 at midrange, 1 at long range, with hysteresis and cancellation of obsolete builds. An initial low-res preview avoids a blank scene during the high-detail pass.
-- **Safe fallback:** if EditableMesh cannot be created or converted to a MeshPart, the client switches to 1-stud greedy rectangular Parts, capped at 3000 quads rather than generating tens of thousands of physical voxel Parts.
-- **Client visuals:** all players derive the same initial planet from the same shared seed; generated EditableMeshes are not server replicated. Gameplay-authoritative planets, collision, editing, persistence and multiplayer seed distribution are future work.
+- **Nominal diameter:** 16 studs; mean surface radius 8.
+- **Hard minimum surface radius:** 7.65 studs (a lowland can dip 0.35 studs below average).
+- **Hard maximum surface radius:** 8.35 studs (a peak can rise 0.35 studs above average).
+- **Height range:** 0.70 studs total between the lowest and highest potential radii, capped for *every seed*. Noise usually occupies only part of this range; there are no artificial equal-height plateaus.
+- **Seed:** 4102026 by default. Three smooth frequencies of 3D noise create modest, coherent, deterministic relief.
+- **Sampling volume:** 18 × 18 × 18 studs, *not* 16. The extra margin prevents the outermost voxels from being cut off near terrain peaks. Voxel corners extend slightly beyond the mathematical radius bounds due to their cubic shape.
+- **Resolution levels:** 128³ cells (0.140625 studs), 64³ (0.28125 studs), 32³ (0.5625 studs).
+- **Surface-only geometry:** occupied interior cells exist briefly as a compact byte mask for sampling and neighborhood tests, but no interior geometry is instantiated.
+
+## Rendering modes
+
+### Preferred: solid voxel surface mesh (EditableMesh)
+
+A full cubic voxel volume is sampled. Only faces of cubes exposed to empty air become geometry. These faces align exactly with the voxel grid corners. Greedy meshing coalesces adjacent coplanar same-color faces into rectangles; each rectangle emits two normal-assigned, vertex-colored **triangles**. This works without the EditableMesh Quads beta. One MeshPart per non-empty 32-cell chunk. Triangles represent the *outer boundary of a solid cube volume*, not thin offset face-plates. Internal faces are omitted because they are invisible.
+
+EditableMesh / MeshPart creation depends on Roblox Mesh & Image API permissions and memory budgets. The renderer automatically chooses a fallback if these operations fail.
+
+### Fallback: actual full solid cubes (merged into cuboids)
+
+The previous Parts renderer spawned narrow surface-facing sheets; their thickness crossed the face plane, creating raised/doubled-looking edges. It is now removed.
+
+In fallback mode we first identify all **exposed solid voxel cells** in a one-cell-thick shell. Neighboring exposed voxels of the same material are greedily merged in three dimensions into rectangular **solid boxes** with exact grid-aligned positions and sizes. A merged box occupies the same volume as its constituent full cube cells, with no sheet overlap or offset at corners. Hidden inner voxels remain absent from the actual Parts geometry.
+
+For stability, we *count* merged boxes before creating Parts. If more than **6,500** would be needed for a planet, fallback automatically chooses the next coarser LOD and regenerates. A restricted client may therefore not display the full 128³ resolution; enabling Mesh & Image APIs is the route to full-quality visuals.
+
+Distance LOD uses an automatically switching near/mid/far resolution with hysteresis, and a low-resolution preview appears first. Mesh generation remains fully client-side and client-local. Physics collision is disabled; seed synchronization, digging, crafting, atmosphere and progression are future systems.
 
 ### Files
 
-- src/shared/ReplicatedStorage/GrowAPlanet/Generation/Config.lua — seed, palette and LOD controls
-- src/shared/ReplicatedStorage/GrowAPlanet/Generation/VoxelField.lua — deterministic occupancy/material sampling
-- src/shared/ReplicatedStorage/GrowAPlanet/Generation/GreedyMesher.lua — visible greedy face extraction
-- src/shared/ReplicatedStorage/GrowAPlanet/Generation/Renderer.lua — chunk MeshParts / fallback Parts
-- src/shared/ReplicatedStorage/GrowAPlanet/Generation/SelfTest.lua — Studio-only geometric assertions
-- src/game/StarterPlayerScripts/PlanetPrototype.client.lua — camera, generation lifecycle and debugging
-- src/game/ServerScriptService/PlanetBootstrap.server.lua — disables avatar auto-spawning
+- src/shared/ReplicatedStorage/GrowAPlanet/Generation/Config.lua — sample box, minimum/maximum surface radii, LOD and budgets.
+- src/shared/ReplicatedStorage/GrowAPlanet/Generation/VoxelField.lua — seeded occupancy and exposed-solid-cube detection.
+- src/shared/ReplicatedStorage/GrowAPlanet/Generation/GreedyMesher.lua — efficient exterior cube-face meshing.
+- src/shared/ReplicatedStorage/GrowAPlanet/Generation/CuboidMesher.lua — exact volume-preserving solid cubic Parts merge.
+- src/shared/ReplicatedStorage/GrowAPlanet/Generation/Renderer.lua — triangle MeshParts or solid Part cuboids.
+- src/shared/ReplicatedStorage/GrowAPlanet/Generation/SelfTest.lua — outward normals, chunk seams, bounds, voxel volume preservation.
+- src/game/StarterPlayerScripts/PlanetPrototype.client.lua — camera, generation, LOD and diagnostics.
+- src/game/ServerScriptService/PlanetBootstrap.server.lua — disables default character spawning.
 
 ### Camera & development controls
 
@@ -35,21 +54,21 @@ Press Play in the existing space/starfield place and one 16-stud planet appears 
 | 0 | Automatic distance LOD |
 | F3 | Toggle stats overlay |
 
-Stats show seed, active LOD, renderer, number of chunks/quads, camera distance, and build status. F3 is hidden by default.
+Stats show seed, active LOD, renderer, chunks, exposed faces or solid cubes/cuboids, surface radius bounds, camera distance and build status. F3 is hidden by default.
 
 ### Runtime mesh prerequisites
 
-Roblox requires eligibility and experience opt-in for runtime EditableMesh on published games. Consult Creator Dashboard > Enable Mesh / Image APIs and account verification rules. The client detects creation failures and degrades to coarse Parts. The fallback does *not* deliver the full 0.25-stud visual fidelity. There is no special plugin dependency.
+Roblox requires eligibility and experience opt-in for runtime EditableMesh on published games. Consult Creator Dashboard > Enable Mesh / Image APIs and account verification rules. The client detects creation failures and degrades to coarse Parts. The fallback uses solid cubes and dynamically chooses a safe LOD; full 128³ fidelity may require the mesh path. There is no special plugin dependency.
 
 ### Smoke tests in Roblox Studio
 
 1. Pull main, start one Rojo server at localhost:34878, connect to the correct Studio place, then press Play.
-2. Check Output for **Greedy voxel geometry self-test passed** (single voxel outward normals + two voxels crossing a chunk boundary).
+2. Check Output for **Solid voxel, chunk seam and terrain bound self-tests passed**.
 3. Confirm planet generates at origin, with no avatar or baseplate, and your original stars/lighting remain intact.
 4. Rotate the camera completely around the planet; look for missing patches and cracks, especially at chunk boundaries.
-5. Scroll close and far: the F3 overlay should show 0.25, 0.5, and 1-stud resolution transitions. Try forced 1/2/3 and reset with 0.
+5. Scroll close and far: the F3 overlay should show 0.140625, 0.28125, and 0.5625-stud resolution transitions (or coarser fallback when capped). Try forced 1/2/3 and reset with 0.
 6. Press R twice; seeds and geometry should change. Same seed and LOD produce deterministic results.
-7. Test with Mesh & Image APIs enabled, then disabled (or on a device/account without entitlement). The fallback should produce a coarse planet instead of an empty screen.
+7. Test with Mesh & Image APIs enabled, then disabled (or on a device/account without entitlement). The fallback should produce solid cube/cuboid Parts with flush corners instead of thin overlapping plates.
 8. Test on phone: touch drag/pinch, no player spawn, and performance. If needed, tune Config thresholds before expanding scope.
 
 ## Known intentional limits

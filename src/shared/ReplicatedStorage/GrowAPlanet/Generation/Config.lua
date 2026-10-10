@@ -4,18 +4,24 @@ return {
     Seed = 4102026,
     Center = Vector3.new(0, 0, 0),
     Diameter = 16,
-    HeightAmplitude = 0.95,
-    ChunkCells = 16,
+    -- A 16-stud nominal planet needs a little empty air around its tallest
+    -- voxel mountains. An 18-stud sampling box prevents cropped polar faces.
+    SamplingDiameter = 18,
+    MinSurfaceRadius = 7.65,
+    MaxSurfaceRadius = 8.35,
+    SurfaceRoughness = 0.65,
+    ChunkCells = 32,
 
-    -- The highest level resolves 64 cells across the diameter.
-    VoxelSizes = {0.25, 0.5, 1},
-    NearDistance = 31,
-    FarDistance = 55,
+    -- 128^3 / 64^3 / 32^3 cubic cells. Cell edges are always exactly aligned.
+    CellCounts = {128, 64, 32},
+    VoxelSizes = {18 / 128, 18 / 64, 18 / 32},
+    NearDistance = 35,
+    FarDistance = 68,
     LODHysteresis = 3,
 
-    -- Part quads are much heavier than MeshParts. Never use fine LOD with them.
-    FallbackLOD = 3,
-    MaxFallbackQuads = 3000,
+    -- Parts fallback: ACTUAL solid cubes merged into 3D cuboids, never thin plates.
+    -- If a tier needs too many Parts, fall back to the next coarser tier.
+    MaxFallbackParts = 6500,
 
     Camera = {
         InitialDistance = 25,

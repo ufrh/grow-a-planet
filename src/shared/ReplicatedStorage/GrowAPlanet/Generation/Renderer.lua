@@ -1,6 +1,6 @@
 --!strict
--- Every chunk is one colorized EditableMesh MeshPart, or a small group of
--- flat Parts if the user's experience cannot use Mesh & Image APIs.
+-- Every chunk is a colorized EditableMesh triangle MeshPart, or a group of
+-- full solid cuboid Parts (never thin face planes).
 local AssetService = game:GetService("AssetService")
 local Config = require(script.Parent.Config)
 
@@ -53,13 +53,18 @@ function Renderer.addMeshChunk(faces, chunkName, container, center)
             for i, pos in ipairs(face.vertices) do
                 ids[i] = editable:AddVertex(pos - localOrigin)
             end
-            local faceId = editable:AddFace(ids)
+            -- Triangles work without the newer EditableMesh Quads Studio beta.
+            -- Two triangles cover exactly the four corners of the cube face.
             local colorId = colors[face.color]
-            editable:SetFaceColors(faceId, {colorId, colorId, colorId, colorId})
             local component = if face.axis == 1 then face.normal.X elseif face.axis == 2 then face.normal.Y else face.normal.Z
             local normalIndex = if component > 0 then 1 else 2
             local normalId = normals[face.axis][normalIndex]
-            editable:SetFaceNormals(faceId, {normalId, normalId, normalId, normalId})
+            local a = editable:AddTriangle(ids[1], ids[2], ids[3])
+            local b = editable:AddTriangle(ids[1], ids[3], ids[4])
+            editable:SetFaceColors(a, {colorId, colorId, colorId})
+            editable:SetFaceColors(b, {colorId, colorId, colorId})
+            editable:SetFaceNormals(a, {normalId, normalId, normalId})
+            editable:SetFaceNormals(b, {normalId, normalId, normalId})
         end
 
         local part = AssetService:CreateMeshPartAsync(
@@ -84,45 +89,30 @@ function Renderer.addMeshChunk(faces, chunkName, container, center)
     return result
 end
 
-function Renderer.addPartsChunk(faces, chunkName, container, center, totalCount)
+-- Each box fills an exact set of 3D surface voxel cells.
+-- A Part's center and dimensions are integer voxel boundaries: no thin
+-- overlapping sheets or misaligned corners anywhere on the planet.
+function Renderer.addCubesChunk(boxes, chunkName, container, center)
     local group = Instance.new("Folder")
     group.Name = chunkName
-    local thickness = 0.06
-    for i, face in ipairs(faces) do
-        totalCount += 1
-        if totalCount > Config.MaxFallbackQuads then
-            group:Destroy()
-            error("Fallback part budget exceeded. Increase LOD size or the fallback budget.")
-        end
-        local vs = face.vertices
-        local centerPoint = (vs[1] + vs[3]) * 0.5
-        local difference = (vs[3] - vs[1])
-        local size
-        if face.axis == 1 then
-            size = Vector3.new(thickness, math.abs(difference.Y), math.abs(difference.Z))
-        elseif face.axis == 2 then
-            size = Vector3.new(math.abs(difference.X), thickness, math.abs(difference.Z))
-        else
-            size = Vector3.new(math.abs(difference.X), math.abs(difference.Y), thickness)
-        end
+    for i, cube in ipairs(boxes) do
         local part = Instance.new("Part")
-        part.Name = "Face"
-        part.Size = size
-        part.CFrame = CFrame.new(center + centerPoint)
+        part.Name = "Voxel"
+        part.Size = cube.size
+        part.CFrame = CFrame.new(center + cube.position)
         part.Anchored = true
         part.CanCollide = false
-        part.CanQuery = false
         part.CanTouch = false
+        part.CanQuery = false
         part.CastShadow = false
         part.Material = Enum.Material.SmoothPlastic
-        part.Color = Config.Palette[face.color]
+        part.Color = Config.Palette[cube.color]
         part.TopSurface = Enum.SurfaceType.Smooth
         part.BottomSurface = Enum.SurfaceType.Smooth
         part.Parent = group
-        if i % 256 == 0 then task.wait() end
+        if i % 200 == 0 then task.wait() end
     end
     group.Parent = container
-    return totalCount
 end
 
 return Renderer

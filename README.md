@@ -34,12 +34,15 @@ The separate FORGE Studio designer plugin and its build project are removed. The
 
 Do not bind the same player datastore with both APIs. Game-specific services, controllers and player data schemas are not installed yet. FORGE bootstraps still require a Roblox Studio smoke test.
 
-## Prototype 0.1
+## Prototype 0.2 — microvoxels
 
-**Implemented:** one deterministic seed-based 16-stud procedural planet, with 0.25-stud high-resolution cells (64 across), surface-only greedy-meshed exposed quads, chunked EditableMesh rendering, and custom distance-driven 0.25 / 0.5 / 1-stud LOD. A lower-resolution Parts fallback activates if Mesh & Image APIs are unavailable.
+The initial planet generator now samples a **128 × 128 × 128** grid (lower detail: 64³ and 32³) in a roomy 18-stud sampling box. The nominal planet is 16 studs across. Its surface stays within **7.65–8.35 studs of the center**, so terrain reads as a gently uneven sphere instead of a jagged asteroid.
 
-A scriptable orbit camera and minimal F3 debugging overlay ship with it. An automatic Studio geometry self-test checks outward face winding and chunk seams. Gameplay data, traits, economy, vegetation, and persistence remain intentionally out of scope.
+- Proper solid voxel volumes. Mesh mode renders the visible, greedily merged outer surfaces; Parts fallback uses full cubic blocks, greedily merged into *solid cuboids*, never thin face plates.
+- Mesh mode uses standard **triangles**, not EditableMesh quad beta APIs. Runtime Mesh & Image permissions still determine whether it works on a given client.
+- Fallback automatically drops to a coarser resolution if the number of merged solid Parts would exceed the per-planet safety budget (currently 6,500).
+- Camera orbit, zoom, seed reroll (R), force LOD (1/2/3), auto LOD (0), diagnostics (F3) all remain.
 
-**Start:** run START_GROW_A_PLANET.bat, connect Rojo, press Play. The starfield stays in Lighting/Workspace and default character spawning is disabled. Use mouse drag or touch drag to orbit and scroll/pinch to zoom. Press R to reroll the seed, 1/2/3 to force LOD, 0 for automatic LOD, and F3 for stats.
+This is still a client-rendered **visual** planet. Its voxels are logical solids; rendered chunks do not have physics collision yet. Start Rojo, press Play, and check Output + F3. Roblox Studio runtime verification is still needed.
 
-See [the generation notes](docs/PLANET_GENERATION.md) for architecture, API eligibility, limitations and smoke-test steps.
+See [generation technical notes](docs/PLANET_GENERATION.md).
