@@ -34,15 +34,12 @@ The separate FORGE Studio designer plugin and its build project are removed. The
 
 Do not bind the same player datastore with both APIs. Game-specific services, controllers and player data schemas are not installed yet. FORGE bootstraps still require a Roblox Studio smoke test.
 
-## Prototype 0.2 — microvoxels
+## Prototype 0.3 — spherical grayscale microvoxels
 
-The initial planet generator now samples a **128 × 128 × 128** grid (lower detail: 64³ and 32³) in a roomy 18-stud sampling box. The nominal planet is 16 studs across. Its surface stays within **7.65–8.35 studs of the center**, so terrain reads as a gently uneven sphere instead of a jagged asteroid.
+The planet uses the existing **128 × 128 × 128** cubic sampling grid, 64³/32³ distance LOD, and 18-stud sampling box. The visible planet is a clean **16-stud-diameter sphere** (fixed radius 8). No noise is applied to shape or height.
 
-- Proper solid voxel volumes. Mesh mode renders the visible, greedily merged outer surfaces; Parts fallback uses full cubic blocks, greedily merged into *solid cuboids*, never thin face plates.
-- Mesh mode uses standard **triangles**, not EditableMesh quad beta APIs. Runtime Mesh & Image permissions still determine whether it works on a given client.
-- Fallback automatically drops to a coarser resolution if the number of merged solid Parts would exceed the per-planet safety budget (currently 6,500).
-- Camera orbit, zoom, seed reroll (R), force LOD (1/2/3), auto LOD (0), diagnostics (F3) all remain.
+Instead, three seeded 3D noise layers are projected along the normalized spherical directions to paint a subtle **white-to-gray** voxel pattern on its surface. Rerolling a seed changes only the color pattern, not the silhouette.
 
-This is still a client-rendered **visual** planet. Its voxels are logical solids; rendered chunks do not have physics collision yet. Start Rojo, press Play, and check Output + F3. Roblox Studio runtime verification is still needed.
+The previous efficient exterior triangle mesh, real solid-cube/cuboid Parts fallback, safety budget, chunking, camera and controls remain unchanged. Rendering and FPS still require Roblox Studio verification.
 
 See [generation technical notes](docs/PLANET_GENERATION.md).

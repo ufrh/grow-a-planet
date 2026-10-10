@@ -60,8 +60,11 @@ function SelfTest.run()
     for tier, count in ipairs(Config.CellCounts) do
         assert(math.abs(count * Config.VoxelSizes[tier] - Config.SamplingDiameter) < 0.000001)
     end
-    assert(Config.MinSurfaceRadius < Config.Diameter * 0.5, "Minimum must be below mean radius")
-    assert(Config.MaxSurfaceRadius > Config.Diameter * 0.5, "Maximum must be above mean radius")
+    assert(Config.MinSurfaceRadius == Config.Diameter * 0.5, "Sphere minimum radius must be fixed")
+    assert(Config.MaxSurfaceRadius == Config.Diameter * 0.5, "Sphere maximum radius must be fixed")
+    for _, color in ipairs(Config.Palette) do
+        assert(color.R == color.G and color.G == color.B, "Palette must be strictly grayscale")
+    end
     assert(Config.MaxSurfaceRadius + Config.VoxelSizes[1] < Config.SamplingDiameter * 0.5,
         "Sampling bounds must leave room for the largest surface cubes")
 
@@ -69,7 +72,26 @@ function SelfTest.run()
     -- Adjacent voxels straddling an actual 32-cell chunk boundary.
     verify(fake(33, {["31:31:31"] = true, ["32:31:31"] = true}), 10)
     verifySolidCubes()
-    print("[Grow a Planet] Solid voxel, chunk seam and terrain bound self-tests passed.")
+
+    -- Geometry must remain unchanged when the seed changes. The pattern
+    -- should vary only through palette indexes along the same outer shell.
+    local Field = require(script.Parent.VoxelField)
+    local a = Field.new(12345, Config.VoxelSizes[3])
+    local b = Field.new(67890, Config.VoxelSizes[3])
+    local differences = 0
+    for x = 0, a.Count - 1 do
+        for y = 0, a.Count - 1 do
+            for z = 0, a.Count - 1 do
+                local occupied = a:isSolid(x, y, z)
+                assert(occupied == b:isSolid(x, y, z), "Seed changed the sphere's silhouette")
+                if occupied and a:material(x, y, z) ~= b:material(x, y, z) then
+                    differences += 1
+                end
+            end
+        end
+    end
+    assert(differences > 0, "Different seeds should change only the surface color")
+    print("[Grow a Planet] Spherical geometry, grayscale colors and voxel tests passed.")
 end
 
 return SelfTest

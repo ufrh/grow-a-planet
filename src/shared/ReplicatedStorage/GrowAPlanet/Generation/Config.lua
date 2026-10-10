@@ -1,15 +1,14 @@
--- Prototype 0.1: one deterministic microvoxel planet.
+-- Prototype 0.3: spherical white planet with seed-based grayscale noise.
 -- All distances are in Roblox studs. Seeds are integers, shared across clients.
 return {
     Seed = 4102026,
     Center = Vector3.new(0, 0, 0),
     Diameter = 16,
-    -- A 16-stud nominal planet needs a little empty air around its tallest
-    -- voxel mountains. An 18-stud sampling box prevents cropped polar faces.
+    -- Keep the exact 128^3 resolution and 18-stud sampling extent.
+    -- The visible planet is a sphere with a fixed 8-stud radius.
     SamplingDiameter = 18,
-    MinSurfaceRadius = 7.65,
-    MaxSurfaceRadius = 8.35,
-    SurfaceRoughness = 0.65,
+    MinSurfaceRadius = 8,
+    MaxSurfaceRadius = 8,
     ChunkCells = 32,
 
     -- 128^3 / 64^3 / 32^3 cubic cells. Cell edges are always exactly aligned.
@@ -32,12 +31,18 @@ return {
         AutoRotationSpeed = 0.035,
     },
 
-    -- Purely geological colors. The growth/traits system is NOT involved.
+    -- Color-only projected 3D noise. The sphere's geometry never changes.
+    ColorNoiseScale = 2.4,
+    ColorNoiseDetailScale = 5.8,
+    ColorNoiseMicroScale = 11.5,
+
+    -- White-dominant grayscale. Each voxel gets one of these colors.
     Palette = {
-        Color3.fromRGB(88, 70, 73),
-        Color3.fromRGB(125, 95, 89),
-        Color3.fromRGB(164, 127, 109),
-        Color3.fromRGB(193, 165, 139),
-        Color3.fromRGB(216, 200, 174),
+        Color3.fromRGB(255, 255, 255),
+        Color3.fromRGB(250, 250, 250),
+        Color3.fromRGB(242, 242, 242),
+        Color3.fromRGB(231, 231, 231),
+        Color3.fromRGB(216, 216, 216),
+        Color3.fromRGB(198, 198, 198),
     },
 }

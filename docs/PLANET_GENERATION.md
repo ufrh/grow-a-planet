@@ -1,17 +1,16 @@
-# Grow a Planet — Procedural Generation Prototype 0.2
+# Grow a Planet — Procedural Generation Prototype 0.3
 
-## Goal and geological proportions
+## Spherical geometry with projected grayscale noise
 
-Earth feels almost smooth at the size of a golf ball. We preserve a visually round planet first and exaggerate its surface relief only enough to register at voxel scale.
+This revision keeps the exact previous voxel resolution and rendering architecture and changes only shape sampling and surface colors.
 
-- **Nominal diameter:** 16 studs; mean surface radius 8.
-- **Hard minimum surface radius:** 7.65 studs (a lowland can dip 0.35 studs below average).
-- **Hard maximum surface radius:** 8.35 studs (a peak can rise 0.35 studs above average).
-- **Height range:** 0.70 studs total between the lowest and highest potential radii, capped for *every seed*. Noise usually occupies only part of this range; there are no artificial equal-height plateaus.
-- **Seed:** 4102026 by default. Three smooth frequencies of 3D noise create modest, coherent, deterministic relief.
-- **Sampling volume:** 18 × 18 × 18 studs, *not* 16. The extra margin prevents the outermost voxels from being cut off near terrain peaks. Voxel corners extend slightly beyond the mathematical radius bounds due to their cubic shape.
-- **Resolution levels:** 128³ cells (0.140625 studs), 64³ (0.28125 studs), 32³ (0.5625 studs).
-- **Surface-only geometry:** occupied interior cells exist briefly as a compact byte mask for sampling and neighborhood tests, but no interior geometry is instantiated.
+- **Nominal diameter:** 16 studs; radius exactly 8 studs.
+- **No displacement:** terrain noise is not used to determine whether a voxel is occupied. Only the mathematical sphere radius determines the solid/empty grid cells. The voxelized silhouette still has its natural tiny block steps.
+- **Resolution:** 128³ / 64³ / 32³ grid cells in the existing 18-stud sampling box (0.140625 / 0.28125 / 0.5625 stud cells, unchanged).
+- **Color projection:** normalized vector from planet center to each outer voxel cell is sampled with three seeded 3D Perlin-style noise frequencies, so the coloring wraps around the sphere without a longitude seam.
+- **Palette:** six white-to-gray colors; grayscale is color-only, not a height map.
+- **Efficient computation:** buried voxels don't need noise lookup. The existing greedy face meshes and solid-cuboid fallback still use the same chunks and distance LOD.
+- **Seeds:** different seeds produce different gray patterns but the same sphere geometry.
 
 ## Rendering modes
 
@@ -33,12 +32,12 @@ Distance LOD uses an automatically switching near/mid/far resolution with hyster
 
 ### Files
 
-- src/shared/ReplicatedStorage/GrowAPlanet/Generation/Config.lua — sample box, minimum/maximum surface radii, LOD and budgets.
-- src/shared/ReplicatedStorage/GrowAPlanet/Generation/VoxelField.lua — seeded occupancy and exposed-solid-cube detection.
+- src/shared/ReplicatedStorage/GrowAPlanet/Generation/Config.lua — unchanged grid and LOD, fixed sphere radius, grayscale noise scales and colors.
+- src/shared/ReplicatedStorage/GrowAPlanet/Generation/VoxelField.lua — seed-independent spherical occupancy, seeded grayscale on the surface, and exposed-solid-cube detection.
 - src/shared/ReplicatedStorage/GrowAPlanet/Generation/GreedyMesher.lua — efficient exterior cube-face meshing.
 - src/shared/ReplicatedStorage/GrowAPlanet/Generation/CuboidMesher.lua — exact volume-preserving solid cubic Parts merge.
 - src/shared/ReplicatedStorage/GrowAPlanet/Generation/Renderer.lua — triangle MeshParts or solid Part cuboids.
-- src/shared/ReplicatedStorage/GrowAPlanet/Generation/SelfTest.lua — outward normals, chunk seams, bounds, voxel volume preservation.
+- src/shared/ReplicatedStorage/GrowAPlanet/Generation/SelfTest.lua — outward normals, chunk seams, spherical bounds, grayscale palette, and seed-independent geometry.
 - src/game/StarterPlayerScripts/PlanetPrototype.client.lua — camera, generation, LOD and diagnostics.
 - src/game/ServerScriptService/PlanetBootstrap.server.lua — disables default character spawning.
 
@@ -63,11 +62,11 @@ Roblox requires eligibility and experience opt-in for runtime EditableMesh on pu
 ### Smoke tests in Roblox Studio
 
 1. Pull main, start one Rojo server at localhost:34878, connect to the correct Studio place, then press Play.
-2. Check Output for **Solid voxel, chunk seam and terrain bound self-tests passed**.
-3. Confirm planet generates at origin, with no avatar or baseplate, and your original stars/lighting remain intact.
+2. Check Output for **Spherical geometry, grayscale colors and voxel tests passed**.
+3. Confirm a white spherical planet generates at origin, with no avatar or baseplate, and your original stars/lighting remain intact.
 4. Rotate the camera completely around the planet; look for missing patches and cracks, especially at chunk boundaries.
 5. Scroll close and far: the F3 overlay should show 0.140625, 0.28125, and 0.5625-stud resolution transitions (or coarser fallback when capped). Try forced 1/2/3 and reset with 0.
-6. Press R twice; seeds and geometry should change. Same seed and LOD produce deterministic results.
+6. Press R twice; the gray noise pattern should change but the sphere silhouette should not. Same seed and LOD produce deterministic results.
 7. Test with Mesh & Image APIs enabled, then disabled (or on a device/account without entitlement). The fallback should produce solid cube/cuboid Parts with flush corners instead of thin overlapping plates.
 8. Test on phone: touch drag/pinch, no player spawn, and performance. If needed, tune Config thresholds before expanding scope.
 

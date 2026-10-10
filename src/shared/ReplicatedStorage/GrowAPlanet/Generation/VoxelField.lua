@@ -9,24 +9,27 @@ local function index(x: number, y: number, z: number, count: number): number
     return (x * count + y) * count + z
 end
 
-local function heightAt(x: number, y: number, z: number, sx: number, sy: number, sz: number): number
-    local broad = math.noise(x * 0.22 + sx, y * 0.22 + sy, z * 0.22 + sz)
-    local detail = math.noise(x * 0.61 + sx * 1.7, y * 0.61 + sy * 1.7, z * 0.61 + sz * 1.7)
-    local tiny = math.noise(x * 1.31 + sx * 2.3, y * 1.31 + sy * 2.3, z * 1.31 + sz * 2.3)
-    local profile = (broad * 0.78 + detail * 0.24 + tiny * 0.08) * Config.SurfaceRoughness
-    return math.clamp(profile, Config.MinSurfaceRadius - Config.Diameter * 0.5, Config.MaxSurfaceRadius - Config.Diameter * 0.5)
-end
+-- Three layers of deterministic 3D noise sampled in unit-sphere direction,
+-- so color wraps around the planet seamlessly (no polar/equirectangular seam).
+local function materialAt(nx: number, ny: number, nz: number, sx: number, sy: number, sz: number): number
+    local broad = math.noise(
+        nx * Config.ColorNoiseScale + sx,
+        ny * Config.ColorNoiseScale + sy,
+        nz * Config.ColorNoiseScale + sz
+    )
+    local detail = math.noise(
+        nx * Config.ColorNoiseDetailScale + sx * 1.7,
+        ny * Config.ColorNoiseDetailScale + sy * 1.7,
+        nz * Config.ColorNoiseDetailScale + sz * 1.7
+    )
+    local micro = math.noise(
+        nx * Config.ColorNoiseMicroScale + sx * 2.3,
+        ny * Config.ColorNoiseMicroScale + sy * 2.3,
+        nz * Config.ColorNoiseMicroScale + sz * 2.3
+    )
 
-local function materialAt(x: number, y: number, z: number, radius: number, seed: number): number
-    local altitude = math.sqrt(x * x + y * y + z * z) - radius
-    local latitude = math.abs(y) / radius
-    local variation = ((math.floor(x * 5) * 73856093 + math.floor(y * 5) * 19349663 + math.floor(z * 5) * 83492791 + seed) % 17) / 170
-    local value = altitude + latitude * 0.055 + variation
-    if value > 0.37 then return 5 end
-    if value > 0.15 then return 4 end
-    if value > -0.1 then return 3 end
-    if value > -0.32 then return 2 end
-    return 1
+    local value = math.clamp(0.5 + broad * 0.22 + detail * 0.10 + micro * 0.04, 0, 0.9999)
+    return math.clamp(math.floor(value * #Config.Palette) + 1, 1, #Config.Palette)
 end
 
 function Field.new(seed: number, voxelSize: number, cancelled: (() -> boolean)?)
@@ -46,8 +49,10 @@ function Field.new(seed: number, voxelSize: number, cancelled: (() -> boolean)?)
     }, Field)
 
     local radius = Config.Diameter * 0.5
-    local minRadius2 = Config.MinSurfaceRadius * Config.MinSurfaceRadius
-    local maxRadius2 = Config.MaxSurfaceRadius * Config.MaxSurfaceRadius
+    local radius2 = radius * radius
+    -- Only sample color near the surface; deep interior never renders.
+    local shellRadius = math.max(0, radius - voxelSize * 2)
+    local shellRadius2 = shellRadius * shellRadius
     local sx = (seed % 1297) * 0.093 + 11.3
     local sy = (seed % 2143) * 0.071 + 48.1
     local sz = (seed % 3187) * 0.051 + 99.7
@@ -59,22 +64,18 @@ function Field.new(seed: number, voxelSize: number, cancelled: (() -> boolean)?)
             for z = 0, count - 1 do
                 local pz = (z + 0.5) * voxelSize - Config.SamplingDiameter * 0.5
                 local distance2 = px * px + py * py + pz * pz
-                local solid: boolean
-                if distance2 <= minRadius2 then
-                    solid = true
-                elseif distance2 >= maxRadius2 then
-                    solid = false
-                else
-                    local localRadius = radius + heightAt(px, py, pz, sx, sy, sz)
-                    solid = distance2 <= localRadius * localRadius
-                end
+                -- Geometry depends ONLY on distance, never on noise or seed.
+                local solid = distance2 <= radius2
                 local offset = index(x, y, z, count)
                 if solid then
                     buffer.writeu8(self.Occupied, offset, 1)
-                    -- Material only matters at an exposed boundary, but storing one
-                    -- byte per cell makes the greedy mesher deterministic and cheap.
-                    if distance2 >= minRadius2 then
-                        buffer.writeu8(self.Materials, offset, materialAt(px, py, pz, radius, seed))
+                    -- Project grayscale noise onto unit-sphere direction.
+                    -- Every visible cube (including stepped side faces) gets a
+                    -- color, while buried cells retain the default white.
+                    if distance2 >= shellRadius2 then
+                        local magnitude = math.sqrt(distance2)
+                        local nx, ny, nz = px / magnitude, py / magnitude, pz / magnitude
+                        buffer.writeu8(self.Materials, offset, materialAt(nx, ny, nz, sx, sy, sz))
                     else
                         buffer.writeu8(self.Materials, offset, 1)
                     end
