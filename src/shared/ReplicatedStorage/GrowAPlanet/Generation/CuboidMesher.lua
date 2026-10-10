@@ -5,12 +5,13 @@
 local Config = require(script.Parent.Config)
 local Cuboids = {}
 
-function Cuboids.forEachChunk(field, onChunk, cancelled: (() -> boolean)?)
+function Cuboids.forEachChunk(field, onChunk, cancelled: (() -> boolean)?, maxBoxes: number?)
     assert(field.Surface, "Call field:prepareSurface() before cuboid merging")
     local n = field.Count
     local step = Config.ChunkCells
     local voxel = field.VoxelSize
-    local half = Config.SamplingDiameter * 0.5
+    -- Use the actual field bounds: planet and 2x-finer tree fields differ.
+    local half = n * voxel * 0.5
     local total = 0
 
     for cx = 0, n - 1, step do
@@ -85,7 +86,7 @@ function Cuboids.forEachChunk(field, onChunk, cancelled: (() -> boolean)?)
                                     color = material,
                                 })
                                 total += 1
-                                if total > Config.MaxFallbackParts then
+                                if total > (maxBoxes or Config.MaxFallbackParts) then
                                     error("FALLBACK_PART_BUDGET", 0)
                                 end
                             end

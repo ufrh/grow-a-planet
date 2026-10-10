@@ -34,12 +34,14 @@ The separate FORGE Studio designer plugin and its build project are removed. The
 
 Do not bind the same player datastore with both APIs. Game-specific services, controllers and player data schemas are not installed yet. FORGE bootstraps still require a Roblox Studio smoke test.
 
-## Prototype 0.4 — high-contrast projected Perlin grayscale
+## Prototype 0.5 — 256³ sphere + radial voxel trees
 
-The planet uses the existing **128 × 128 × 128** cubic sampling grid, 64³/32³ distance LOD, and 18-stud sampling box. The visible planet is a clean **16-stud-diameter sphere** (fixed radius 8). No noise is applied to shape or height.
+**Planet:** the unchanged 16-stud-diameter sphere uses 256³ / 128³ / 64³ logical voxel LODs. Black-to-white Perlin noise colors the surface, never displacing it.
 
-One octave of seeded **3D Perlin noise** is projected along the normalized spherical directions. Its virtual height becomes a **full black-to-white grayscale value**, quantized into 16 monotonic shades for efficient voxel rendering. Rerolling a seed changes the grayscale height map, never the sphere's silhouette.
+**Optimization:** the sphere's occupancy is now computed analytically, with meshing of only surface-intersecting chunks. There are no 16.8 million interior voxel objects or buffers. The renderer still uses greedy triangle meshes where supported and solid-cuboid Parts as a safety-capped fallback.
 
-The previous efficient exterior triangle mesh, real solid-cube/cuboid Parts fallback, safety budget, chunking, camera and controls remain unchanged. Rendering and FPS still require Roblox Studio verification.
+**Tree experiment:** four small seeded voxel trees are placed around the sphere at different angles. Trunks and branches follow radial growth; their constituent cubes remain fully axis-aligned with no rotation. The tree voxels are 2x finer than the planet's voxels at the same LOD: 0.03515625 / 0.0703125 / 0.140625 studs.
 
-See [generation technical notes](docs/PLANET_GENERATION.md).
+No full vegetation gameplay, ecology, player characters, or persistence yet. This is a visual proof-of-concept. The built-in orbital camera and F3 stats continue to work; press R to reroll the seed, 1/2/3 to test LOD, and 0 for automatic detail.
+
+See the generation technical notes in docs/PLANET_GENERATION.md. Studio rendering and device performance require a live test.

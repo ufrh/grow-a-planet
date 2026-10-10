@@ -26,6 +26,10 @@ function Mesher.forEachChunk(field, onChunk)
                 local last = {math.min(cx + side, n), math.min(cy + side, n), math.min(cz + side, n)}
                 local faces = {}
 
+                -- Analytic planets skip chunks far inside / outside the sphere.
+                -- Vegetation provides a populated-chunk predicate instead.
+                if not field.chunkMightHaveSurface
+                    or field:chunkMightHaveSurface(first, last) then
                 for axis = 1, 3 do
                     local u = (axis % 3) + 1
                     local v = ((axis + 1) % 3) + 1
@@ -110,6 +114,7 @@ function Mesher.forEachChunk(field, onChunk)
                     end
                 end
 
+                end -- potentially exposed chunk
                 if #faces > 0 then
                     onChunk(faces, {cx, cy, cz})
                 end

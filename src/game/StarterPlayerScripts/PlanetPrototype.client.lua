@@ -1,5 +1,5 @@
 --!strict
--- Grow a Planet 0.1: purely client-side, deterministic visual planet.
+-- Grow a Planet 0.5: seeded sphere + axis-aligned radial voxel tree previews.
 -- No default Roblox character, no gameplay UI, no persistence.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,6 +13,7 @@ local Config = require(Generation:WaitForChild("Config"))
 local Field = require(Generation:WaitForChild("VoxelField"))
 local Mesher = require(Generation:WaitForChild("GreedyMesher"))
 local CuboidMesher = require(Generation:WaitForChild("CuboidMesher"))
+local TreeGenerator = require(Generation:WaitForChild("TreeGenerator"))
 local Renderer = require(Generation:WaitForChild("Renderer"))
 
 if RunService:IsStudio() then
@@ -41,7 +42,7 @@ gui.Parent = Player:WaitForChild("PlayerGui")
 
 local panel = Instance.new("TextLabel")
 panel.Name = "Stats"
-panel.Size = UDim2.fromOffset(355, 226)
+panel.Size = UDim2.fromOffset(375, 246)
 panel.Position = UDim2.fromOffset(16, 16)
 panel.BackgroundColor3 = Color3.fromRGB(15, 18, 29)
 panel.BackgroundTransparency = 0.2
@@ -97,6 +98,8 @@ local function buildPlanet(tier, seed, ticket)
     local chunks = 0
     local surfaceCubes = 0
     local cuboids = 0
+    local treeCount = 0
+    local treeVoxelCount = 0
     local startedAt = os.clock()
     local currentMode = mode
     local sampleCount = 0
@@ -143,6 +146,87 @@ local function buildPlanet(tier, seed, ticket)
                 checkCancelled()
             end
         end
+        -- Visual test: axis-aligned cubes at 2x the planet resolution,
+        -- assembled into radial trunks/branches/canopies at different angles.
+        -- A tree failure must not make the existing planet disappear.
+        if Config.TestTrees.Enabled then
+            local treeRoot = Instance.new("Folder")
+            treeRoot.Name = "RadialVoxelTreeTests"
+            treeRoot.Parent = staging
+
+            for index = 1, Config.TestTrees.Count do
+                checkCancelled()
+                local treeTier = tier
+                local displayed = false
+                while not displayed and treeTier <= #Config.VoxelSizes do
+                    local treeFolder = Instance.new("Folder")
+                    treeFolder.Name = "Tree_" .. index .. "_LOD_" .. treeTier
+                    treeFolder.Parent = treeRoot
+                    local previousEditables = #editables
+                    local okTree, errorTree = pcall(function()
+                        local field = TreeGenerator.make(seed, treeTier, index,
+                            function() return buildTicket ~= ticket end)
+                        checkCancelled()
+                        assert(field.WoodCount > 0 and field.LeafCount > 0,
+                            "Test tree has no wood or foliage")
+
+                        local treeChunks = 0
+                        if currentMode == "mesh" then
+                            Mesher.forEachChunk(field, function(faces, chunk)
+                                checkCancelled()
+                                local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
+                                local editable = Renderer.addMeshChunk(faces, name,
+                                    treeFolder, field.Center, Config.TestTrees.Colors)
+                                table.insert(editables, editable)
+                                treeChunks += 1
+                                if treeChunks % 2 == 0 then task.wait() end
+                            end)
+                        else
+                            field:prepareSurface(function() return buildTicket ~= ticket end)
+                            checkCancelled()
+                            local pending = {}
+                            CuboidMesher.forEachChunk(field, function(boxes, chunk)
+                                table.insert(pending, {boxes = boxes, chunk = chunk})
+                            end, function() return buildTicket ~= ticket end,
+                                Config.TestTrees.MaxPartsPerTree)
+
+                            for _, record in ipairs(pending) do
+                                checkCancelled()
+                                local chunk = record.chunk
+                                local name = string.format("Chunk_%d_%d_%d", chunk[1], chunk[2], chunk[3])
+                                Renderer.addCubesChunk(record.boxes, name, treeFolder,
+                                    field.Center, Config.TestTrees.Colors)
+                                treeChunks += 1
+                            end
+                        end
+                        checkCancelled()
+                        assert(treeChunks > 0, "Tree renderer produced no visible chunks")
+                        treeCount += 1
+                        treeVoxelCount += field.WoodCount + field.LeafCount
+                    end)
+
+                    if okTree then
+                        displayed = true
+                    else
+                        treeFolder:Destroy()
+                        for i = #editables, previousEditables + 1, -1 do
+                            editables[i]:Destroy()
+                            table.remove(editables, i)
+                        end
+                        if buildTicket ~= ticket then error("GENERATION_CANCELLED", 0) end
+                        if currentMode == "parts" and treeTier < #Config.VoxelSizes then
+                            treeTier += 1
+                        else
+                            warn(string.format(
+                                "[Grow a Planet] Test tree %d could not render at LOD %d: %s",
+                                index, treeTier, tostring(errorTree)
+                            ))
+                            break
+                        end
+                    end
+                end
+            end
+        end
         checkCancelled()
         if chunks == 0 then error("Planet generated zero surface chunks.") end
     end, debug.traceback)
@@ -158,6 +242,8 @@ local function buildPlanet(tier, seed, ticket)
         quads = quads,
         surfaceCubes = surfaceCubes,
         cuboids = cuboids,
+        treeCount = treeCount,
+        treeVoxelCount = treeVoxelCount,
         chunks = chunks,
         samples = sampleCount,
         seconds = os.clock() - startedAt,
@@ -186,9 +272,10 @@ local function launchWorker()
                     dispose(old)
                     status = string.format("Ready (%.2fs)", result.seconds)
                     print(string.format(
-                        "[Grow a Planet] Seed %d | %.4f-stud cells | %d samples | %d faces | %d surface cubes | %d cuboids | %d chunks | %s | %.2fs",
+                        "[Grow a Planet] Seed %d | %.5f-stud planet cells | %d logical grid cells | %d faces | %d surface cubes | %d cuboids | %d chunks | %d trees | %s | %.2fs",
                         seed, Config.VoxelSizes[tier], result.samples, result.quads,
-                        result.surfaceCubes, result.cuboids, result.chunks, result.mode, result.seconds
+                        result.surfaceCubes, result.cuboids, result.chunks, result.treeCount,
+                        result.mode, result.seconds
                     ))
                 else
                     dispose(result)
@@ -364,7 +451,7 @@ RunService:BindToRenderStep("GrowAPlanetOrbitCamera", Enum.RenderPriority.Camera
         debugTimer = 0
         local current = active
         panel.Text = string.format(
-            "GROW A PLANET — PROTOTYPE 0.2\nSeed: %d\nLOD: %s  Cell: %s studs\nRenderer: %s\nChunks: %d  Faces: %d\nSurface cubes: %d  Boxes: %d\nRadius: %.2f—%.2f\nCamera distance: %.1f\nStatus: %s\n\nDrag: orbit  Scroll/pinch: zoom\nR: new seed  1/2/3: LOD  0: auto",
+            "GROW A PLANET — PROTOTYPE 0.5\nSeed: %d\nLOD: %s  Cell: %s studs\nRenderer: %s\nChunks: %d  Faces: %d\nSurface cubes: %d  Boxes: %d\nTrees: %d  Tree voxels: %d\nTree cell: %.5f studs\nRadius: %.2f—%.2f\nCamera distance: %.1f\nStatus: %s\n\nDrag: orbit  Scroll/pinch: zoom\nR: new seed  1/2/3: LOD  0: auto",
             desiredSeed,
             current and tostring(current.tier) or "-",
             current and tostring(Config.VoxelSizes[current.tier]) or "-",
@@ -373,6 +460,9 @@ RunService:BindToRenderStep("GrowAPlanetOrbitCamera", Enum.RenderPriority.Camera
             current and current.quads or 0,
             current and current.surfaceCubes or 0,
             current and current.cuboids or 0,
+            current and current.treeCount or 0,
+            current and current.treeVoxelCount or 0,
+            current and Config.VoxelSizes[current.tier] * Config.TestTrees.VoxelRatio or 0,
             Config.MinSurfaceRadius, Config.MaxSurfaceRadius,
             distance,
             status

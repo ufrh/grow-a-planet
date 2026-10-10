@@ -17,6 +17,7 @@ foreach ($FilePath in @(
     'src/shared/ReplicatedStorage/GrowAPlanet/Generation/GreedyMesher.lua',
     'src/shared/ReplicatedStorage/GrowAPlanet/Generation/Renderer.lua',
     'src/shared/ReplicatedStorage/GrowAPlanet/Generation/SelfTest.lua',
+    'src/shared/ReplicatedStorage/GrowAPlanet/Generation/TreeGenerator.lua',
     'src/game/ServerScriptService/PlanetBootstrap.server.lua',
     'src/game/StarterPlayerScripts/PlanetPrototype.client.lua'
 )) {

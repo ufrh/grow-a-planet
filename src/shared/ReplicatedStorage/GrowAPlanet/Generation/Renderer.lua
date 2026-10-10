@@ -31,7 +31,7 @@ function Renderer.meshSupported()
 end
 
 -- Returns the EditableMesh so it can be disposed when changing LOD.
-function Renderer.addMeshChunk(faces, chunkName, container, center)
+function Renderer.addMeshChunk(faces, chunkName, container, center, palette)
     local editable = AssetService:CreateEditableMesh()
     if not editable then error("EditableMesh creation returned nil (budget or permission limit)") end
 
@@ -45,7 +45,7 @@ function Renderer.addMeshChunk(faces, chunkName, container, center)
             {editable:AddNormal(Vector3.zAxis), editable:AddNormal(-Vector3.zAxis)},
         }
         local colors = {}
-        for i, color in ipairs(Config.Palette) do
+        for i, color in ipairs(palette or Config.Palette) do
             colors[i] = editable:AddColor(color, 1)
         end
         for _, face in ipairs(faces) do
@@ -92,7 +92,7 @@ end
 -- Each box fills an exact set of 3D surface voxel cells.
 -- A Part's center and dimensions are integer voxel boundaries: no thin
 -- overlapping sheets or misaligned corners anywhere on the planet.
-function Renderer.addCubesChunk(boxes, chunkName, container, center)
+function Renderer.addCubesChunk(boxes, chunkName, container, center, palette)
     local group = Instance.new("Folder")
     group.Name = chunkName
     for i, cube in ipairs(boxes) do
@@ -106,7 +106,7 @@ function Renderer.addCubesChunk(boxes, chunkName, container, center)
         part.CanQuery = false
         part.CastShadow = false
         part.Material = Enum.Material.SmoothPlastic
-        part.Color = Config.Palette[cube.color]
+        part.Color = (palette or Config.Palette)[cube.color]
         part.TopSurface = Enum.SurfaceType.Smooth
         part.BottomSurface = Enum.SurfaceType.Smooth
         part.Parent = group

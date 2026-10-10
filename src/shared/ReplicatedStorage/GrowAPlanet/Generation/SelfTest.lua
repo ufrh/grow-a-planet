@@ -2,6 +2,7 @@
 local Mesher = require(script.Parent.GreedyMesher)
 local Cuboids = require(script.Parent.CuboidMesher)
 local Config = require(script.Parent.Config)
+local TreeGenerator = require(script.Parent.TreeGenerator)
 local SelfTest = {}
 
 local function fake(count, cells)
@@ -57,8 +58,13 @@ end
 
 function SelfTest.run()
     assert(#Config.CellCounts == #Config.VoxelSizes, "LOD counts and sizes mismatch")
+    assert(Config.CellCounts[1] == 256, "Highest planet LOD must be 256^3")
+    assert(Config.TestTrees.VoxelRatio == 0.5, "Trees must use half-width planet voxels")
     for tier, count in ipairs(Config.CellCounts) do
         assert(math.abs(count * Config.VoxelSizes[tier] - Config.SamplingDiameter) < 0.000001)
+        assert(math.abs(Config.TestTrees.GridCells[tier] * Config.VoxelSizes[tier]
+            * Config.TestTrees.VoxelRatio - 2.8125) < 0.000001,
+            "Tree grids must share a stable world-space extent across LODs")
     end
     assert(Config.MinSurfaceRadius == Config.Diameter * 0.5, "Sphere minimum radius must be fixed")
     assert(Config.MaxSurfaceRadius == Config.Diameter * 0.5, "Sphere maximum radius must be fixed")
@@ -102,7 +108,17 @@ function SelfTest.run()
     end
     assert(differences > 0, "Different seeds should change only the surface color")
     assert(lowestShade < highestShade - 5, "Projected Perlin shades are insufficiently contrasted")
-    print("[Grow a Planet] Spherical geometry and black-to-white projected Perlin tests passed.")
+
+    -- A real vegetation field: bark, leaves, radial orientation and
+    -- grid alignment are all tested without creating any Roblox Parts.
+    local testTree = TreeGenerator.make(12345, 3, 1)
+    assert(testTree.Count == Config.TestTrees.GridCells[3], "Tree LOD cell count mismatch")
+    assert(testTree.VoxelSize == Config.VoxelSizes[3] * 0.5, "Trees must be twice as fine")
+    assert(testTree.WoodCount > 0, "Test tree is missing a voxel trunk")
+    assert(testTree.LeafCount > 0, "Test tree has no voxel canopy")
+    assert(testTree.Up:Dot((testTree.Root - Config.Center).Unit) > 0.9999,
+        "Tree growth is not radial to the sphere")
+    print("[Grow a Planet] 256^3 sphere / 2x tree voxel grid geometry tests passed.")
 end
 
 return SelfTest
