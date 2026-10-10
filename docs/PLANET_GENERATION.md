@@ -1,4 +1,4 @@
-# Grow a Planet — Procedural Generation Prototype 0.3
+# Grow a Planet — Procedural Generation Prototype 0.4
 
 ## Spherical geometry with projected grayscale noise
 
@@ -7,8 +7,8 @@ This revision keeps the exact previous voxel resolution and rendering architectu
 - **Nominal diameter:** 16 studs; radius exactly 8 studs.
 - **No displacement:** terrain noise is not used to determine whether a voxel is occupied. Only the mathematical sphere radius determines the solid/empty grid cells. The voxelized silhouette still has its natural tiny block steps.
 - **Resolution:** 128³ / 64³ / 32³ grid cells in the existing 18-stud sampling box (0.140625 / 0.28125 / 0.5625 stud cells, unchanged).
-- **Color projection:** normalized vector from planet center to each outer voxel cell is sampled with three seeded 3D Perlin-style noise frequencies, so the coloring wraps around the sphere without a longitude seam.
-- **Palette:** six white-to-gray colors; grayscale is color-only, not a height map.
+- **Color projection:** normalized vector from planet center to each outer voxel cell is sampled with one octave of standard 3D Perlin noise. Imaginary height is normalized with contrast to fill the black-to-white grayscale range, so the coloring wraps around the sphere without a longitude seam.
+- **Palette:** 16 steps running from true RGB(0,0,0) black to RGB(255,255,255) white. The Perlin value is interpreted as a projected *virtual* height map affecting only color, never geometry.
 - **Efficient computation:** buried voxels don't need noise lookup. The existing greedy face meshes and solid-cuboid fallback still use the same chunks and distance LOD.
 - **Seeds:** different seeds produce different gray patterns but the same sphere geometry.
 
@@ -63,7 +63,7 @@ Roblox requires eligibility and experience opt-in for runtime EditableMesh on pu
 
 1. Pull main, start one Rojo server at localhost:34878, connect to the correct Studio place, then press Play.
 2. Check Output for **Spherical geometry, grayscale colors and voxel tests passed**.
-3. Confirm a white spherical planet generates at origin, with no avatar or baseplate, and your original stars/lighting remain intact.
+3. Confirm a high-contrast black-and-white grayscale sphere generates at origin, with no avatar or baseplate, and your original stars/lighting remain intact.
 4. Rotate the camera completely around the planet; look for missing patches and cracks, especially at chunk boundaries.
 5. Scroll close and far: the F3 overlay should show 0.140625, 0.28125, and 0.5625-stud resolution transitions (or coarser fallback when capped). Try forced 1/2/3 and reset with 0.
 6. Press R twice; the gray noise pattern should change but the sphere silhouette should not. Same seed and LOD produce deterministic results.

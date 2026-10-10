@@ -1,5 +1,12 @@
--- Prototype 0.3: spherical white planet with seed-based grayscale noise.
+-- Prototype 0.4: sphere with fully mapped black/white Perlin projection.
 -- All distances are in Roblox studs. Seeds are integers, shared across clients.
+-- Quantized to 16 true grayscale steps for voxel-friendly geometry merging.
+local palette = {}
+for i = 0, 15 do
+    local shade = math.round(255 * i / 15)
+    palette[i + 1] = Color3.fromRGB(shade, shade, shade)
+end
+
 return {
     Seed = 4102026,
     Center = Vector3.new(0, 0, 0),
@@ -31,18 +38,10 @@ return {
         AutoRotationSpeed = 0.035,
     },
 
-    -- Color-only projected 3D noise. The sphere's geometry never changes.
-    ColorNoiseScale = 2.4,
-    ColorNoiseDetailScale = 5.8,
-    ColorNoiseMicroScale = 11.5,
+    -- One octave of standard 3D Perlin noise, projected from sphere direction.
+    -- 0 height = black, 1 height = white. Larger contrast reaches extremes.
+    ColorNoiseScale = 2.0,
+    ColorNoiseContrast = 1.9,
 
-    -- White-dominant grayscale. Each voxel gets one of these colors.
-    Palette = {
-        Color3.fromRGB(255, 255, 255),
-        Color3.fromRGB(250, 250, 250),
-        Color3.fromRGB(242, 242, 242),
-        Color3.fromRGB(231, 231, 231),
-        Color3.fromRGB(216, 216, 216),
-        Color3.fromRGB(198, 198, 198),
-    },
+    Palette = palette,
 }

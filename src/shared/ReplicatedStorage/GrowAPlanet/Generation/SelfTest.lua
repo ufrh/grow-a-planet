@@ -62,8 +62,14 @@ function SelfTest.run()
     end
     assert(Config.MinSurfaceRadius == Config.Diameter * 0.5, "Sphere minimum radius must be fixed")
     assert(Config.MaxSurfaceRadius == Config.Diameter * 0.5, "Sphere maximum radius must be fixed")
-    for _, color in ipairs(Config.Palette) do
+    assert(#Config.Palette == 16, "Expected 16 black-to-white grayscale steps")
+    assert(Config.Palette[1] == Color3.fromRGB(0, 0, 0), "Noise minima must map to true black")
+    assert(Config.Palette[#Config.Palette] == Color3.fromRGB(255, 255, 255), "Noise maxima must map to true white")
+    for i, color in ipairs(Config.Palette) do
         assert(color.R == color.G and color.G == color.B, "Palette must be strictly grayscale")
+        if i > 1 then
+            assert(color.R > Config.Palette[i - 1].R, "Grayscale heights must map monotonically")
+        end
     end
     assert(Config.MaxSurfaceRadius + Config.VoxelSizes[1] < Config.SamplingDiameter * 0.5,
         "Sampling bounds must leave room for the largest surface cubes")
@@ -79,19 +85,24 @@ function SelfTest.run()
     local a = Field.new(12345, Config.VoxelSizes[3])
     local b = Field.new(67890, Config.VoxelSizes[3])
     local differences = 0
+    local lowestShade, highestShade = math.huge, -math.huge
     for x = 0, a.Count - 1 do
         for y = 0, a.Count - 1 do
             for z = 0, a.Count - 1 do
                 local occupied = a:isSolid(x, y, z)
                 assert(occupied == b:isSolid(x, y, z), "Seed changed the sphere's silhouette")
-                if occupied and a:material(x, y, z) ~= b:material(x, y, z) then
-                    differences += 1
+                if occupied then
+                    local shade = a:material(x, y, z)
+                    lowestShade = math.min(lowestShade, shade)
+                    highestShade = math.max(highestShade, shade)
+                    if shade ~= b:material(x, y, z) then differences += 1 end
                 end
             end
         end
     end
     assert(differences > 0, "Different seeds should change only the surface color")
-    print("[Grow a Planet] Spherical geometry, grayscale colors and voxel tests passed.")
+    assert(lowestShade < highestShade - 5, "Projected Perlin shades are insufficiently contrasted")
+    print("[Grow a Planet] Spherical geometry and black-to-white projected Perlin tests passed.")
 end
 
 return SelfTest

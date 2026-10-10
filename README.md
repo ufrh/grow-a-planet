@@ -34,11 +34,11 @@ The separate FORGE Studio designer plugin and its build project are removed. The
 
 Do not bind the same player datastore with both APIs. Game-specific services, controllers and player data schemas are not installed yet. FORGE bootstraps still require a Roblox Studio smoke test.
 
-## Prototype 0.3 — spherical grayscale microvoxels
+## Prototype 0.4 — high-contrast projected Perlin grayscale
 
 The planet uses the existing **128 × 128 × 128** cubic sampling grid, 64³/32³ distance LOD, and 18-stud sampling box. The visible planet is a clean **16-stud-diameter sphere** (fixed radius 8). No noise is applied to shape or height.
 
-Instead, three seeded 3D noise layers are projected along the normalized spherical directions to paint a subtle **white-to-gray** voxel pattern on its surface. Rerolling a seed changes only the color pattern, not the silhouette.
+One octave of seeded **3D Perlin noise** is projected along the normalized spherical directions. Its virtual height becomes a **full black-to-white grayscale value**, quantized into 16 monotonic shades for efficient voxel rendering. Rerolling a seed changes the grayscale height map, never the sphere's silhouette.
 
 The previous efficient exterior triangle mesh, real solid-cube/cuboid Parts fallback, safety budget, chunking, camera and controls remain unchanged. Rendering and FPS still require Roblox Studio verification.
 

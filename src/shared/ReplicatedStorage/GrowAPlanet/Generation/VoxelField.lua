@@ -9,27 +9,21 @@ local function index(x: number, y: number, z: number, count: number): number
     return (x * count + y) * count + z
 end
 
--- Three layers of deterministic 3D noise sampled in unit-sphere direction,
--- so color wraps around the planet seamlessly (no polar/equirectangular seam).
+-- A single standard 3D Perlin noise field sampled in unit-sphere direction.
+-- The noise is interpreted as imaginary height, mapped across black to white;
+-- it never displaces the actual sphere. 3D projection has no UV seam.
 local function materialAt(nx: number, ny: number, nz: number, sx: number, sy: number, sz: number): number
-    local broad = math.noise(
+    local height = math.noise(
         nx * Config.ColorNoiseScale + sx,
         ny * Config.ColorNoiseScale + sy,
         nz * Config.ColorNoiseScale + sz
     )
-    local detail = math.noise(
-        nx * Config.ColorNoiseDetailScale + sx * 1.7,
-        ny * Config.ColorNoiseDetailScale + sy * 1.7,
-        nz * Config.ColorNoiseDetailScale + sz * 1.7
-    )
-    local micro = math.noise(
-        nx * Config.ColorNoiseMicroScale + sx * 2.3,
-        ny * Config.ColorNoiseMicroScale + sy * 2.3,
-        nz * Config.ColorNoiseMicroScale + sz * 2.3
-    )
 
-    local value = math.clamp(0.5 + broad * 0.22 + detail * 0.10 + micro * 0.04, 0, 0.9999)
-    return math.clamp(math.floor(value * #Config.Palette) + 1, 1, #Config.Palette)
+    -- Roblox Perlin tends to concentrate near zero. Stretch its useful
+    -- range instead of compressing everything into barely visible pale grays.
+    -- Negative virtual heights = black; positive heights = white.
+    local normalizedHeight = math.clamp(0.5 + height * Config.ColorNoiseContrast, 0, 1)
+    return math.clamp(math.floor(normalizedHeight * (#Config.Palette - 1) + 0.5) + 1, 1, #Config.Palette)
 end
 
 function Field.new(seed: number, voxelSize: number, cancelled: (() -> boolean)?)
@@ -69,7 +63,7 @@ function Field.new(seed: number, voxelSize: number, cancelled: (() -> boolean)?)
                 local offset = index(x, y, z, count)
                 if solid then
                     buffer.writeu8(self.Occupied, offset, 1)
-                    -- Project grayscale noise onto unit-sphere direction.
+                    -- Project high-contrast black-to-white Perlin onto the sphere.
                     -- Every visible cube (including stepped side faces) gets a
                     -- color, while buried cells retain the default white.
                     if distance2 >= shellRadius2 then
